@@ -41,6 +41,10 @@ window.APP_CONFIG = {
   clientPrefix:"djidock",
 
   // ---- Live video (dashboard) ----------------------------------------------
-  // Server field default for the video panel (local MediaMTX host).
-  mediaHost:   "192.168.1.225"
+  // Browser playback endpoint. This may be an HTTPS reverse-proxy path.
+  mediaHost:   "https://camera.djidock.idea8.cloud/dock-camera",
+
+  // RTMP ingest URL sent to DJI live_start_push. Keep this as the actual RTMP
+  // endpoint the RC/drone can reach; do not derive it from the playback URL.
+  mediaPushUrl:"rtmp://camera.djidock.idea8.cloud:1935/live/m3m"
 };
