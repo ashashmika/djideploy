@@ -191,7 +191,7 @@
                 <div class="video-frame"><video id="videoEl" controls autoplay muted playsinline></video></div>
                 <div id="videoStatus" style="font-size:12px;color:var(--muted);margin:8px 0;">Idle — auto-starts on connect.</div>
                 <div class="video-controls">
-                    <label>Server <input type="text" id="mediaHost" value="192.168.20.84" style="width:100px" oninput="refreshUrls()"></label>
+                    <label>Server <input type="text" id="mediaHost" value="https://camera.djidock.idea8.cloud/dock-camera" style="width:220px" oninput="refreshUrls()" placeholder="host or full URL"></label>
                     <label>Stream <input type="text" id="streamName" value="live/m3m" style="width:74px" oninput="refreshUrls()"></label>
                     <label>Quality
                         <select id="qualitySelect">
@@ -630,13 +630,70 @@
             return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
         });
     }
-    function rtmpUrl() { return 'rtmp://' + document.getElementById('mediaHost').value + ':1935/' + document.getElementById('streamName').value; }
-    function hlsUrl() { return 'http://' + document.getElementById('mediaHost').value + ':8888/' + document.getElementById('streamName').value + '/index.m3u8'; }
-    function whepUrl() { return 'http://' + document.getElementById('mediaHost').value + ':8889/' + document.getElementById('streamName').value + '/whep'; }
+    function streamPath() {
+        const stream = (document.getElementById('streamName').value || 'live/m3m').trim().replace(/^\/+|\/+$/g, '');
+        return stream ? '/' + stream : '';
+    }
+    function normalizeMediaInput(raw) {
+        const value = (raw || '').trim();
+        if (!value) return '';
+        return value.replace(/\/+$/, '');
+    }
+    function isAbsoluteUrl(value) {
+        return /^https?:\/\/|^wss?:\/\//i.test(value);
+    }
+    function baseMediaUrl() {
+        const value = normalizeMediaInput(document.getElementById('mediaHost').value);
+        if (!value) return '';
+        if (isAbsoluteUrl(value)) return value;
+        return 'http://' + value;
+    }
+    function joinUrlPath(basePath, suffix) {
+        const base = (basePath || '').replace(/\/+$/, '');
+        const tail = (suffix || '').replace(/^\/+/, '');
+        if (!base) return '/' + tail;
+        return tail ? base + '/' + tail : base;
+    }
+    function rtmpUrl() {
+        const value = normalizeMediaInput(document.getElementById('mediaHost').value);
+        if (!value) return '';
+        const stream = streamPath();
+        if (isAbsoluteUrl(value)) {
+            try {
+                const u = new URL(value);
+                return 'rtmp://' + u.host + u.pathname.replace(/\/+$/, '') + stream;
+            } catch (e) {}
+        }
+        return 'rtmp://' + value + ':1935' + stream;
+    }
+    function hlsUrl() {
+        const value = normalizeMediaInput(document.getElementById('mediaHost').value);
+        if (!value) return '';
+        const stream = streamPath();
+        if (isAbsoluteUrl(value)) {
+            try {
+                const u = new URL(value);
+                return u.origin + joinUrlPath(u.pathname, stream) + '/index.m3u8';
+            } catch (e) {}
+        }
+        return 'http://' + value + ':8888' + stream + '/index.m3u8';
+    }
+    function whepUrl() {
+        const value = normalizeMediaInput(document.getElementById('mediaHost').value);
+        if (!value) return '';
+        const stream = streamPath();
+        if (isAbsoluteUrl(value)) {
+            try {
+                const u = new URL(value);
+                return u.origin + joinUrlPath(u.pathname, stream) + '/whep';
+            } catch (e) {}
+        }
+        return 'http://' + value + ':8889' + stream + '/whep';
+    }
     function refreshUrls() {
-        document.getElementById('rtmpUrlText').innerText = rtmpUrl();
-        document.getElementById('hlsUrlText').innerText = hlsUrl();
-        const w = document.getElementById('whepUrlText'); if (w) w.innerText = whepUrl().replace('/whep', '');
+        const rtmpEl = document.getElementById('rtmpUrlText'); if (rtmpEl) rtmpEl.innerText = rtmpUrl();
+        const hlsEl = document.getElementById('hlsUrlText'); if (hlsEl) hlsEl.innerText = hlsUrl();
+        const w = document.getElementById('whepUrlText'); if (w) w.innerText = whepUrl();
     }
     function publishService(method, data, targetSn) {
         if (!client || !client.connected) { alert('Connect to the broker first.'); return; }
