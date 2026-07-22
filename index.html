@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DJI M3M — Advanced Operations Dashboard</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="config.js"></script>
+    <style>
+        :root {
+            --bg: #14161a;
+            --panel: #1b1e24;
+            --panel-2: #21252d;
+            --border: #2c313b;
+            --accent: #2f9bff;
+            --good: #2ec27e;
+            --warn: #ffb02e;
+            --bad: #ff5a5a;
+            --text: #e6e9ef;
+            --muted: #8b94a3;
+        }
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 16px; }
+        .container { max-width: 1500px; margin: 0 auto; }
+
+        /* ---- Top bar ---- */
+        .topbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; margin-bottom: 16px; }
+        .topbar h1 { font-size: 18px; margin: 0; white-space: nowrap; }
+        .topbar h1 .dot { color: var(--accent); }
+        .spacer { flex: 1; }
+        input[type="text"] { padding: 9px 12px; background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; font-size: 13px; }
+        button { padding: 9px 16px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; transition: filter .15s; }
+        button:hover { filter: brightness(1.12); }
+        .btn-connect { background: var(--accent); color: #fff; }
+        .btn-disconnect { background: var(--bad); color: #fff; }
+        .btn-small { padding: 7px 12px; font-size: 12px; }
+        .btn-ghost { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+        .btn-play { background: var(--good); color: #fff; }
+        .status-badge { padding: 8px 16px; border-radius: 20px; font-weight: 700; background: #3a3f4a; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; }
+        .status-badge::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: currentColor; opacity: .9; }
+        .status-online { background: rgba(46,194,126,.16); color: var(--good); }
+        .status-error { background: rgba(255,90,90,.16); color: var(--bad); }
+        .status-connecting { background: rgba(255,176,46,.16); color: var(--warn); }
+
+        /* ---- Layout ---- */
+        .grid-main { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+        @media (max-width: 1100px) { .grid-main { grid-template-columns: 1fr; } }
+        .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+        .panel h3 { margin: 0 0 12px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; display: flex; align-items: center; gap: 8px; }
+        .panel h3 .pill { margin-left: auto; font-size: 11px; padding: 3px 9px; border-radius: 10px; background: var(--panel-2); color: var(--muted); text-transform: none; letter-spacing: 0; }
+
+        /* ---- Map ---- */
+        #map { height: 460px; width: 100%; border-radius: 10px; background: #0c0e12; }
+        .map-overlay { position: absolute; z-index: 500; top: 60px; right: 26px; display: flex; flex-direction: column; gap: 6px; }
+        .map-wrap { position: relative; }
+        .map-chip { background: rgba(20,22,26,.85); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 8px; font-size: 12px; cursor: pointer; backdrop-filter: blur(4px); }
+        .map-chip.active { border-color: var(--accent); color: var(--accent); }
+        .drone-icon { font-size: 26px; line-height: 1; filter: drop-shadow(0 0 4px rgba(0,0,0,.8)); transition: transform .3s linear; }
+
+        /* ---- Stat cards ---- */
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+        @media (max-width: 900px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+        .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; position: relative; overflow: hidden; }
+        .stat .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+        .stat .value { font-size: 26px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+        .stat .value small { font-size: 13px; color: var(--muted); font-weight: 500; }
+        .stat .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+        .bar { height: 5px; border-radius: 3px; background: var(--panel-2); margin-top: 10px; overflow: hidden; }
+        .bar > span { display: block; height: 100%; background: var(--good); width: 0%; transition: width .4s, background .4s; }
+
+        /* ---- Telemetry rows ---- */
+        .data-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+        .data-row:last-child { border-bottom: none; }
+        .data-label { color: var(--muted); }
+        .data-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+        .stream-live { color: var(--good); }
+        .stream-stale { color: var(--warn); }
+
+        /* ---- Video ---- */
+        .video-frame { width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 10px; overflow: hidden; }
+        .video-frame video { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
+        .video-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+        .video-controls input, .video-controls select { padding: 7px; background: var(--panel-2); border: 1px solid var(--border); color: #fff; border-radius: 6px; font-size: 12px; }
+        .video-controls label { font-size: 12px; color: var(--muted); }
+        .url-hint { font-family: monospace; color: var(--good); font-size: 11px; word-break: break-all; }
+
+        /* ---- Collapsible bottom panels ---- */
+        .bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+        @media (max-width: 1100px) { .bottom-grid { grid-template-columns: 1fr; } }
+        details.panel summary { cursor: pointer; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; list-style: none; }
+        details.panel summary::-webkit-details-marker { display: none; }
+        details.panel summary::before { content: '▸ '; color: var(--accent); }
+        details.panel[open] summary::before { content: '▾ '; }
+        .log-box { height: 320px; overflow-y: auto; background: #0b0d10; padding: 10px; font-family: monospace; font-size: 12px; border-radius: 8px; white-space: pre-wrap; margin-top: 12px; }
+        .diag-box { max-height: 320px; overflow-y: auto; background: #0b0d10; padding: 10px; font-family: monospace; font-size: 12px; border-radius: 8px; margin-top: 12px; }
+        .diag-row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #181b20; }
+        .diag-topic { color: var(--warn); }
+        .diag-osd { color: var(--good); }
+        .diag-count { color: var(--muted); white-space: nowrap; padding-left: 12px; }
+        .field-ok { color: var(--good); }
+        .field-missing { color: var(--bad); }
+        .diag-section { color: var(--accent); margin: 6px 0 2px; font-weight: bold; }
+        .check { font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+        .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--panel); color: var(--text); }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <div class="topbar">
+        <h1><span class="dot">●</span> DJI M3M Operations</h1>
+        <input type="text" id="brokerUrl" value="wss://mqtt.djidock.idea8.cloud:443/mqtt" style="width:260px">
+        <button class="btn-connect" onclick="connectMQTT()">Connect</button>
+        <button class="btn-disconnect btn-small" onclick="disconnectMQTT()">Disconnect</button>
+        <label class="check"><input type="checkbox" id="ackMode" checked> Act as cloud (ack handshakes)</label>
+        <div class="spacer"></div>
+        <div id="connectionStatus" class="status-badge">Offline</div>
+    </div>
+
+    <!-- Stat cards -->
+    <div class="stats-grid">
+        <div class="stat">
+            <div class="label">Drone Battery</div>
+            <div class="value" id="card-battery">--<small>%</small></div>
+            <div class="bar"><span id="bar-battery"></span></div>
+            <div class="sub" id="card-rc-battery">RC: --%</div>
+        </div>
+        <div class="stat">
+            <div class="label">Altitude (rel.)</div>
+            <div class="value" id="card-alt">--<small> m</small></div>
+            <div class="sub" id="card-alt-abs">abs: --</div>
+        </div>
+        <div class="stat">
+            <div class="label">Horizontal Speed</div>
+            <div class="value" id="card-hspeed">--<small> m/s</small></div>
+            <div class="sub" id="card-vspeed">vertical: -- m/s</div>
+        </div>
+        <div class="stat">
+            <div class="label">Distance from Home</div>
+            <div class="value" id="card-dist">--<small> m</small></div>
+            <div class="sub" id="card-heading">heading: --°</div>
+        </div>
+    </div>
+
+    <div class="grid-main">
+        <!-- Map -->
+        <div class="panel map-wrap">
+            <h3>Live Map <span class="pill" id="map-coords">no fix</span></h3>
+            <div class="map-overlay">
+                <div class="map-chip active" id="chip-follow" onclick="toggleFollow()">⊙ Follow</div>
+                <div class="map-chip" id="chip-trail" onclick="toggleTrail()">〰 Trail</div>
+                <div class="map-chip" onclick="recenter()">⌖ Center</div>
+                <div class="map-chip" id="chip-layer" onclick="toggleLayer()">🛰 Sat</div>
+            </div>
+            <div id="map"></div>
+        </div>
+
+        <!-- Right column: telemetry + video -->
+        <div style="display:flex; flex-direction:column; gap:16px;">
+            <div class="panel" id="telemetry-panel">
+                <h3>Telemetry <span class="pill stream-stale" id="val-stream">no data</span></h3>
+                <div class="data-row"><span class="data-label">Gateway (RC) SN</span><span class="data-value" id="val-rc-sn">—</span></div>
+                <div class="data-row"><span class="data-label">Drone (M3M) SN</span><span class="data-value" id="val-drone-sn">—</span></div>
+                <div class="data-row"><span class="data-label">Latitude</span><span class="data-value" id="val-lat">—</span></div>
+                <div class="data-row"><span class="data-label">Longitude</span><span class="data-value" id="val-lon">—</span></div>
+                <div class="data-row"><span class="data-label">GPS</span><span class="data-value" id="val-gps">—</span></div>
+                <div class="data-row"><span class="data-label">RTK</span><span class="data-value" id="val-rtk">—</span></div>
+                <div class="data-row"><span class="data-label">Mode</span><span class="data-value" id="val-mode">—</span></div>
+            </div>
+
+            <div class="panel">
+                <h3>Gimbal Control <span class="pill" id="gimbal-status">idle</span></h3>
+                <button class="btn-connect btn-small" style="width:100%;" onclick="requestControl()">① Request Control — then ACCEPT the popup on the RC</button>
+                <div style="display:flex; gap:10px; margin-top:8px;">
+                    <button class="btn-ghost" style="flex:1" onclick="gimbalPoint('down')">② ▼ Point Down</button>
+                    <button class="btn-ghost" style="flex:1" onclick="gimbalPoint('front')">② ▲ Point Forward</button>
+                </div>
+                <div style="font-size:12px;color:var(--muted);margin-top:10px;">Current: pitch <b id="g-pitch" style="color:var(--text)">—</b>° · yaw <b id="g-yaw" style="color:var(--text)">—</b>° · payload <b id="g-pidx" style="color:var(--text)">—</b></div>
+                <div id="gimbal-msg" style="font-size:12px;color:var(--muted);margin-top:8px; line-height:1.5; min-height:16px;">Ready. Connect + drone online, then press a button.</div>
+                <div style="font-size:11px;color:var(--muted);margin-top:6px; line-height:1.5;">
+                    Experimental — cloud gimbal control needs DRC/payload authority and may conflict with the pilot on the sticks.
+                    Watch the <b>Raw MQTT Stream</b> for the <code>services_reply</code>: <code>result:0</code> = accepted.
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>Live Video</h3>
+                <div class="video-frame"><video id="videoEl" controls autoplay muted playsinline></video></div>
+                <div id="videoStatus" style="font-size:12px;color:var(--muted);margin:8px 0;">Idle — auto-starts on connect.</div>
+                <div class="video-controls">
+                    <label>Server <input type="text" id="mediaHost" value="192.168.20.84" style="width:100px" oninput="refreshUrls()"></label>
+                    <label>Stream <input type="text" id="streamName" value="live/m3m" style="width:74px" oninput="refreshUrls()"></label>
+                    <label>Quality
+                        <select id="qualitySelect">
+                            <option value="0">Adaptive</option>
+                            <option value="1">Smooth</option>
+                            <option value="2">Standard</option>
+                            <option value="3" selected>HD</option>
+                            <option value="4">Ultra HD</option>
+                        </select>
+                    </label>
+                    <label>Camera <select id="videoIdSelect"><option value="">(waiting…)</option></select></label>
+                    <label>Player
+                        <select id="playerMode" onchange="playVideo()">
+                            <option value="auto" selected>Auto (WebRTC→HLS)</option>
+                            <option value="webrtc">WebRTC (low latency)</option>
+                            <option value="hls">HLS</option>
+                        </select>
+                    </label>
+                    <button class="btn-connect btn-small" onclick="startLive()">Start</button>
+                    <button class="btn-disconnect btn-small" onclick="stopLive()">Stop</button>
+                    <button class="btn-small btn-play" onclick="playVideo()">Play ▶</button>
+                </div>
+                <label class="check" style="margin-top:8px;"><input type="checkbox" id="autoStream" checked> Auto-start video on connect</label>
+                <div style="margin-top:8px; font-size:11px; color:var(--muted);">
+                    Push: <span class="url-hint" id="rtmpUrlText"></span><br>
+                    WebRTC: <span class="url-hint" id="whepUrlText"></span><br>
+                    HLS: <span class="url-hint" id="hlsUrlText"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bottom-grid">
+        <details class="panel">
+            <summary>Raw MQTT Stream</summary>
+            <div id="messageLog" class="log-box">Waiting for connection...</div>
+        </details>
+        <details class="panel">
+            <summary>Diagnostics</summary>
+            <div id="topicStats" class="diag-box">No topics yet.</div>
+        </details>
+    </div>
+</div>
+
+<script>
+    const CFG = window.APP_CONFIG || {};   // credentials/settings from config.js
+    let client;
+    let rcSn = null;
+    let droneSn = null;
+
+    const topicCounts = {};
+    const fieldRank = {};
+    const fieldSource = {};
+    let replyCount = 0;
+    let lastOsdTime = 0;
+    let freshTimer = null;
+    const STALE_AFTER_MS = 5000;
+
+    // ---- Raw MQTT session recording (written to a .json file on disconnect) ----
+    let sessionStart = null;      // Date when this connection started
+    let rawLog = [];              // every message this session: {ts, topic, payload}
+    let manualDisconnect = false; // true when the user has intentionally disconnected
+    const RAW_LOG_CAP = 500000;   // safety cap on messages held in memory
+
+    // Live numeric state used by the map + cards (latest known value).
+    const state = {
+        lat: null, lon: null, alt: null, altAbs: null,
+        battery: null, rcBattery: null, hspeed: null, vspeed: null, heading: null,
+        homeLat: null, homeLon: null, mode: null
+    };
+
+    const messageLog = document.getElementById('messageLog');
+    const statusBadge = document.getElementById('connectionStatus');
+    const topicStats = document.getElementById('topicStats');
+
+    function setText(id, value) { const el = document.getElementById(id); if (el) el.innerText = value; }
+
+    function redact(text) {
+        if (typeof text !== 'string') return text;
+        let out = text;
+        if (rcSn) out = out.split(rcSn).join('[RC]');
+        if (droneSn) out = out.split(droneSn).join('[DRONE]');
+        return out;
+    }
+
+    function logMessage(topic, payload) {
+        const timestamp = new Date().toLocaleTimeString();
+        const msgDiv = document.createElement('div');
+        const body = (typeof payload === 'string') ? payload : JSON.stringify(payload, null, 2);
+        msgDiv.innerHTML = `<span style="color:var(--accent)">[${timestamp}]</span> <span style="color:var(--warn)">${redact(topic)}</span>\n${redact(body)}\n\n`;
+        messageLog.prepend(msgDiv);
+        if (messageLog.childNodes.length > 50) messageLog.removeChild(messageLog.lastChild);
+    }
+
+    function deepFind(obj, keys) {
+        if (obj === null || typeof obj !== 'object') return undefined;
+        for (const k of keys) {
+            if (obj[k] !== undefined && obj[k] !== null) return obj[k];
+        }
+        for (const v of Object.values(obj)) {
+            if (v && typeof v === 'object') {
+                const found = deepFind(v, keys);
+                if (found !== undefined) return found;
+            }
+        }
+        return undefined;
+    }
+
+    function num(v) { const n = Number(v); return Number.isFinite(n) ? n : undefined; }
+
+    function rtkFixLabel(v) {
+        if (v === undefined || v === null) return 'No data';
+        const map = { 0: 'Not fixed', 1: 'Converging', 2: 'Fixed' };
+        return map[v] !== undefined ? map[v] : 'code ' + v;
+    }
+
+    // DJI mode_code -> human label (aircraft flight mode in OSD).
+    function modeLabel(v) {
+        const map = {
+            0: 'Standby', 1: 'Preparing', 2: 'Ready', 3: 'Manual', 4: 'Auto Takeoff',
+            5: 'Waypoint', 6: 'Panorama', 7: 'Active Track', 8: 'ADS-B Avoid',
+            9: 'Auto Landing', 10: 'Forced Landing', 11: 'Three-Blade Landing',
+            12: 'Upgrading', 13: 'Disconnected', 14: 'APAS', 15: 'Virtual Stick',
+            16: 'Live Mission', 17: 'AirSense', 18: 'Attitude'
+        };
+        if (v === undefined || v === null) return undefined;
+        return map[v] !== undefined ? map[v] : 'code ' + v;
+    }
+
+    function setRanked(id, value, rank, topic) {
+        if (fieldRank[id] !== undefined && rank < fieldRank[id]) return;
+        fieldRank[id] = rank;
+        fieldSource[id] = topic;
+        setText(id, value);
+    }
+
+    // Learn the RC + drone serials from ANY topic (not only the topology message), so the raw
+    // log and diagnostics can mask them as [RC]/[DRONE] even if we connected mid-session.
+    function captureSNs(topic, payload) {
+        const parts = topic.split('/');
+        if (parts.length < 3 || !parts[2]) return;
+        const sn = parts[2];
+
+        // Gateway (RC/dock) SN: authoritative from the sys/product topology topic.
+        if (topic.indexOf('sys/product/') === 0 && !rcSn) {
+            rcSn = sn; setText('val-rc-sn', sn);
+        }
+        // The "gateway" field inside a thing payload is also the RC/dock serial.
+        if (!rcSn && payload && typeof payload === 'object') {
+            const gw = deepFind(payload, ['gateway']);
+            if (typeof gw === 'string' && gw && gw !== sn) { rcSn = gw; setText('val-rc-sn', gw); }
+        }
+
+        // Drone SN: the thing/product OSD serial that is NOT the gateway. Two devices publish
+        // OSD — the RC on its own SN and the aircraft on its SN — so the aircraft is simply the
+        // one that differs from the gateway. Guarding on `sn !== rcSn` guarantees the two boxes
+        // never show the same serial.
+        if (!droneSn && rcSn && sn !== rcSn
+            && topic.indexOf('thing/product/') === 0 && topic.indexOf('/osd') !== -1) {
+            droneSn = sn; setText('val-drone-sn', sn);
+        }
+    }
+
+    function handleTopology(topic, payload) {
+        const parts = topic.split('/');
+        if (parts.length < 3) return;
+        rcSn = parts[2];
+        setText('val-rc-sn', rcSn);
+        const subDevices = deepFind(payload, ['sub_devices']);
+        if (Array.isArray(subDevices) && subDevices.length > 0 && subDevices[0].sn
+            && subDevices[0].sn !== rcSn) {   // never let the aircraft SN equal the gateway
+            droneSn = subDevices[0].sn;
+            setText('val-drone-sn', droneSn);
+        }
+    }
+
+    // Haversine distance in metres between two lat/lon points.
+    function haversine(lat1, lon1, lat2, lon2) {
+        const R = 6371000;
+        const toRad = d => d * Math.PI / 180;
+        const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+        const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+        return 2 * R * Math.asin(Math.sqrt(a));
+    }
+
+    function applyTelemetry(topic, payload) {
+        const parts = topic.split('/');
+        const currentSn = parts.length >= 3 ? parts[2] : null;
+
+        let rank = 1;
+        if (topic.includes('/osd')) rank = 2;
+        if (droneSn && currentSn === droneSn) rank = 3;
+
+        const lat = num(deepFind(payload, ['latitude', 'lat']));
+        const lon = num(deepFind(payload, ['longitude', 'lng', 'lon']));
+        const alt = num(deepFind(payload, ['height']));                       // relative height above takeoff
+        const altAbs = num(deepFind(payload, ['elevation', 'altitude']));     // absolute / ellipsoid
+        const bat = num(deepFind(payload, ['capacity_percent', 'battery_percent', 'percent']));
+        const hspeed = num(deepFind(payload, ['horizontal_speed']));
+        const vspeed = num(deepFind(payload, ['vertical_speed']));
+        const heading = num(deepFind(payload, ['attitude_head', 'head', 'yaw']));
+        const homeLat = num(deepFind(payload, ['home_latitude']));
+        const homeLon = num(deepFind(payload, ['home_longitude']));
+        const mode = deepFind(payload, ['mode_code']);
+
+        let gotData = false;
+
+        if (lat !== undefined) { setRanked('val-lat', lat.toFixed(6), rank, topic); if (rank >= (fieldRank['val-lat']||0)) state.lat = lat; gotData = true; }
+        if (lon !== undefined) { setRanked('val-lon', lon.toFixed(6), rank, topic); state.lon = lon; gotData = true; }
+        if (alt !== undefined) { state.alt = alt; gotData = true; }
+        if (altAbs !== undefined) { state.altAbs = altAbs; gotData = true; }
+        if (bat !== undefined) {
+            // Route battery by which device published this OSD: RC topic → RC battery, else drone.
+            if (rcSn && currentSn === rcSn) state.rcBattery = bat;
+            else state.battery = bat;
+            gotData = true;
+        }
+        if (hspeed !== undefined) { state.hspeed = hspeed; gotData = true; }
+        if (vspeed !== undefined) { state.vspeed = vspeed; gotData = true; }
+        if (heading !== undefined) { state.heading = heading; gotData = true; }
+        if (homeLat !== undefined) state.homeLat = homeLat;
+        if (homeLon !== undefined) state.homeLon = homeLon;
+        if (mode !== undefined) { state.mode = mode; const ml = modeLabel(mode); if (ml) setRanked('val-mode', ml, rank, topic); }
+
+        // GPS & RTK from position_state.
+        let gotGnss = false;
+        const ps = deepFind(payload, ['position_state']);
+        if (ps && typeof ps === 'object') {
+            const gpsNum = num(ps.gps_number);
+            const gpsQual = num(ps.quality);
+            const rtkNum = num(ps.rtk_number);
+            const isFixed = ps.is_fixed;
+            if (gpsNum !== undefined) {
+                let g = gpsNum + ' sats';
+                if (gpsQual !== undefined) g += ' · signal ' + gpsQual + '/5';
+                setRanked('val-gps', g, rank, topic); gotGnss = true;
+            }
+            if (rtkNum !== undefined || isFixed !== undefined) {
+                let r = rtkFixLabel(isFixed);
+                if (rtkNum !== undefined) r += ' · ' + rtkNum + ' sats';
+                setRanked('val-rtk', r, rank, topic); gotGnss = true;
+            }
+        }
+
+        // Gimbal angles + payload index. The M3M reports the camera under a dynamic key like "68-0-0".
+        const gpitch = num(deepFind(payload, ['gimbal_pitch']));
+        const gyaw = num(deepFind(payload, ['gimbal_yaw']));
+        const pidx = deepFind(payload, ['payload_index']);
+        if (typeof pidx === 'string') { gimbalPayloadIndex = pidx; setText('g-pidx', pidx); }
+        if (gpitch !== undefined) setText('g-pitch', gpitch.toFixed(0));
+        if (gyaw !== undefined) setText('g-yaw', gyaw.toFixed(0));
+
+        if (gotData || gotGnss) {
+            lastOsdTime = Date.now();
+            updateCards();
+            updateMap();
+        }
+    }
+
+    // ---- Stat cards ----
+    function batteryColor(p) {
+        if (p == null) return 'var(--muted)';
+        if (p > 50) return 'var(--good)';
+        if (p > 20) return 'var(--warn)';
+        return 'var(--bad)';
+    }
+    function updateCards() {
+        if (state.battery != null) {
+            document.getElementById('card-battery').innerHTML = Math.round(state.battery) + '<small>%</small>';
+            const bar = document.getElementById('bar-battery');
+            bar.style.width = Math.max(0, Math.min(100, state.battery)) + '%';
+            bar.style.background = batteryColor(state.battery);
+        }
+        setText('card-rc-battery', 'RC: ' + (state.rcBattery != null ? Math.round(state.rcBattery) + '%' : '--%'));
+        if (state.alt != null) document.getElementById('card-alt').innerHTML = state.alt.toFixed(1) + '<small> m</small>';
+        setText('card-alt-abs', 'abs: ' + (state.altAbs != null ? state.altAbs.toFixed(1) + ' m' : '--'));
+        if (state.hspeed != null) document.getElementById('card-hspeed').innerHTML = state.hspeed.toFixed(1) + '<small> m/s</small>';
+        setText('card-vspeed', 'vertical: ' + (state.vspeed != null ? state.vspeed.toFixed(1) + ' m/s' : '--'));
+
+        // Distance from home.
+        let dist = null;
+        if (state.lat != null && state.lon != null && state.homeLat != null && state.homeLon != null) {
+            dist = haversine(state.homeLat, state.homeLon, state.lat, state.lon);
+        }
+        document.getElementById('card-dist').innerHTML = (dist != null ? Math.round(dist) : '--') + '<small> m</small>';
+        setText('card-heading', 'heading: ' + (state.heading != null ? Math.round(state.heading) + '°' : '--'));
+    }
+
+    // ---- Leaflet map ----
+    let map, droneMarker, homeMarker, trailLine;
+    const trailPoints = [];
+    let followDrone = true;
+    let showTrail = true;
+    let centeredOnce = false;
+    let satLayer = false;
+    let osmTiles, satTiles;
+
+    function initMap() {
+        map = L.map('map', { zoomControl: true, attributionControl: false }).setView([0, 0], 2);
+        osmTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 });
+        satTiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
+        osmTiles.addTo(map);
+        trailLine = L.polyline([], { color: '#2f9bff', weight: 3, opacity: 0.85 }).addTo(map);
+    }
+
+    function droneDivIcon(heading) {
+        return L.divIcon({
+            className: '',
+            html: `<div class="drone-icon" style="transform:rotate(${heading || 0}deg)">🛩️</div>`,
+            iconSize: [26, 26], iconAnchor: [13, 13]
+        });
+    }
+
+    function updateMap() {
+        if (!map) return;
+        if (state.lat == null || state.lon == null) return;
+        const pos = [state.lat, state.lon];
+        document.getElementById('map-coords').innerText = state.lat.toFixed(5) + ', ' + state.lon.toFixed(5);
+
+        if (!droneMarker) {
+            droneMarker = L.marker(pos, { icon: droneDivIcon(state.heading) }).addTo(map);
+        } else {
+            droneMarker.setLatLng(pos);
+            droneMarker.setIcon(droneDivIcon(state.heading));
+        }
+        droneMarker.bindPopup(`Alt ${state.alt != null ? state.alt.toFixed(1) : '--'} m · ${state.hspeed != null ? state.hspeed.toFixed(1) : '--'} m/s`);
+
+        // Home marker.
+        if (state.homeLat != null && state.homeLon != null) {
+            const home = [state.homeLat, state.homeLon];
+            if (!homeMarker) {
+                homeMarker = L.marker(home, { icon: L.divIcon({ className: '', html: '<div style="font-size:20px">🏠</div>', iconSize: [20,20], iconAnchor: [10,10] }) }).addTo(map);
+                homeMarker.bindPopup('Home / Takeoff');
+            } else {
+                homeMarker.setLatLng(home);
+            }
+        }
+
+        // Trail.
+        const last = trailPoints[trailPoints.length - 1];
+        if (!last || last[0] !== state.lat || last[1] !== state.lon) {
+            trailPoints.push(pos);
+            if (trailPoints.length > 2000) trailPoints.shift();
+            if (showTrail) trailLine.setLatLngs(trailPoints);
+        }
+
+        if (!centeredOnce) { map.setView(pos, 18); centeredOnce = true; }
+        else if (followDrone) { map.panTo(pos, { animate: true }); }
+    }
+
+    function toggleFollow() { followDrone = !followDrone; document.getElementById('chip-follow').classList.toggle('active', followDrone); }
+    function toggleTrail() {
+        showTrail = !showTrail;
+        document.getElementById('chip-trail').classList.toggle('active', showTrail);
+        trailLine.setLatLngs(showTrail ? trailPoints : []);
+    }
+    function recenter() { if (state.lat != null) map.setView([state.lat, state.lon], 18); }
+    function toggleLayer() {
+        satLayer = !satLayer;
+        document.getElementById('chip-layer').classList.toggle('active', satLayer);
+        if (satLayer) { map.removeLayer(osmTiles); satTiles.addTo(map); }
+        else { map.removeLayer(satTiles); osmTiles.addTo(map); }
+    }
+
+    // ---- Freshness ----
+    function formatAge(ms) {
+        const s = Math.round(ms / 1000);
+        if (s < 90) return s + 's';
+        const m = Math.round(s / 60);
+        if (m < 90) return m + 'm';
+        return Math.round(m / 60) + 'h';
+    }
+    function updateFreshness() {
+        const el = document.getElementById('val-stream');
+        if (!lastOsdTime) { el.innerText = 'no data'; el.className = 'pill stream-stale'; return; }
+        const ageMs = Date.now() - lastOsdTime;
+        if (ageMs > STALE_AFTER_MS) { el.innerText = 'STALE · ' + formatAge(ageMs); el.className = 'pill stream-stale'; }
+        else { el.innerText = 'LIVE · ' + formatAge(ageMs); el.className = 'pill stream-live'; }
+        persistState();
+    }
+
+    // ---- Persistence ----
+    const STORAGE_KEY = 'm3m_dashboard_state_v2';
+    function persistState() {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ rcSn, droneSn, state, lastOsdTime })); } catch (e) {}
+    }
+    function restoreState() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return;
+            const s = JSON.parse(raw);
+            if (s.rcSn) { rcSn = s.rcSn; setText('val-rc-sn', s.rcSn); }
+            if (s.droneSn) { droneSn = s.droneSn; setText('val-drone-sn', s.droneSn); }
+            if (s.state) { Object.assign(state, s.state); updateCards(); }
+            if (s.lastOsdTime) { lastOsdTime = s.lastOsdTime; }
+            if (state.lat != null) setText('val-lat', state.lat.toFixed(6));
+            if (state.lon != null) setText('val-lon', state.lon.toFixed(6));
+        } catch (e) {}
+    }
+
+    // ---- Cloud handshake acks ----
+    function publishReply(replyTopic, request, data) {
+        if (!client || !client.connected) return;
+        const reply = { tid: request.tid, bid: request.bid, timestamp: Date.now(), method: request.method, data: data || { result: 0 } };
+        client.publish(replyTopic, JSON.stringify(reply), { qos: 1 });
+        replyCount++;
+        logMessage('REPLY -> ' + replyTopic, reply);
+    }
+    function handleHandshake(topic, payload) {
+        const ackEl = document.getElementById('ackMode');
+        if (ackEl && !ackEl.checked) return;
+        const parts = topic.split('/');
+        if (parts.length < 3) return;
+        const sn = parts[2];
+        if (topic.endsWith('/status') && payload.method === 'update_topo') {
+            publishReply('sys/product/' + sn + '/status_reply', payload, { result: 0 });
+        } else if (topic.endsWith('/requests')) {
+            publishReply('thing/product/' + sn + '/requests_reply', payload, { result: 0 });
+        } else if (topic.endsWith('/events')) {
+            publishReply('thing/product/' + sn + '/events_reply', payload, { result: 0 });
+        }
+    }
+
+    // ---- Live video ----
+    let hls = null;
+    let pc = null;   // WebRTC (WHEP) peer connection for low-latency playback
+    let liveVideoIds = {};
+    let liveStartSent = false;
+    let liveCapReported = false;   // true once a real live_capacity arrives (authoritative over OSD-derived)
+    let liveCommandsSent = 0;
+    let lastServiceResult = null;
+
+    function uuid() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+            const r = Math.random() * 16 | 0;
+            return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+        });
+    }
+    function rtmpUrl() { return 'rtmp://' + document.getElementById('mediaHost').value + ':1935/' + document.getElementById('streamName').value; }
+    function hlsUrl() { return 'http://' + document.getElementById('mediaHost').value + ':8888/' + document.getElementById('streamName').value + '/index.m3u8'; }
+    function whepUrl() { return 'http://' + document.getElementById('mediaHost').value + ':8889/' + document.getElementById('streamName').value + '/whep'; }
+    function refreshUrls() {
+        document.getElementById('rtmpUrlText').innerText = rtmpUrl();
+        document.getElementById('hlsUrlText').innerText = hlsUrl();
+        const w = document.getElementById('whepUrlText'); if (w) w.innerText = whepUrl().replace('/whep', '');
+    }
+    function publishService(method, data, targetSn) {
+        if (!client || !client.connected) { alert('Connect to the broker first.'); return; }
+        const sn = targetSn || rcSn;
+        if (!sn) { alert('No SN yet — wait for the drone to connect.'); return; }
+        const msg = { tid: uuid(), bid: uuid(), timestamp: Date.now(), method: method, data: data };
+        const topic = 'thing/product/' + sn + '/services';
+        client.publish(topic, JSON.stringify(msg), { qos: 1 });
+        liveCommandsSent++;
+        logMessage('SERVICE -> ' + topic, msg);
+    }
+    function currentVideoId() {
+        const sel = document.getElementById('videoIdSelect').value;
+        if (sel) return sel;
+        // No dropdown pick yet: build from the camera the OSD actually reports (e.g. 99-0-0),
+        // NOT a guessed 0-0-0 — the dock silently ignores a video_id for a camera it doesn't have.
+        if (droneSn) return droneSn + '/' + (gimbalPayloadIndex || '0-0-0') + '/normal-0';
+        return '';
+    }
+    function startLive() {
+        const videoId = currentVideoId();
+        if (!videoId) { alert('No camera available yet (waiting for live_capacity).'); return; }
+        publishService('live_start_push', {
+            url_type: 1, url: rtmpUrl(), video_id: videoId,
+            video_quality: parseInt(document.getElementById('qualitySelect').value, 10)
+        });
+        document.getElementById('videoStatus').innerText = 'Sent live_start_push. Give it a few seconds, then Play.';
+    }
+    function stopLive() {
+        publishService('live_stop_push', { video_id: currentVideoId() });
+        document.getElementById('videoStatus').innerText = 'Sent live_stop_push.';
+    }
+    function playerMode() { const el = document.getElementById('playerMode'); return el ? el.value : 'auto'; }
+
+    // Tear down whichever player is active so we can switch cleanly.
+    function stopPlayers() {
+        if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
+        if (pc) { try { pc.close(); } catch (e) {} pc = null; }
+        const v = document.getElementById('videoEl');
+        if (v) { try { v.srcObject = null; } catch (e) {} v.removeAttribute('src'); }
+    }
+
+    // Entry point (Play button, auto-start, player-mode change). WebRTC first, HLS as fallback.
+    function playVideo() {
+        stopPlayers();
+        if (playerMode() === 'hls') { playHls(); return; }
+        playWebRTC();
+    }
+
+    // Non-trickle ICE: wait until the browser has gathered its (LAN host) candidates so we can
+    // send one complete offer to MediaMTX's WHEP endpoint. Host candidates gather in <1s.
+    function waitIceGathering(peer) {
+        return new Promise(function (resolve) {
+            if (peer.iceGatheringState === 'complete') return resolve();
+            let done = false;
+            function finish() { if (done) return; done = true; peer.removeEventListener('icegatheringstatechange', check); resolve(); }
+            function check() { if (peer.iceGatheringState === 'complete') finish(); }
+            peer.addEventListener('icegatheringstatechange', check);
+            setTimeout(finish, 1500);   // don't wait forever
+        });
+    }
+
+    // Low-latency playback via MediaMTX WebRTC (WHEP). ~0.3–0.8s vs HLS's several seconds.
+    async function playWebRTC() {
+        const video = document.getElementById('videoEl');
+        const status = document.getElementById('videoStatus');
+        const auto = playerMode() === 'auto';
+        status.innerText = 'Connecting (WebRTC)…';
+        try {
+            pc = new RTCPeerConnection();
+            const mine = pc;   // guard against a stale async continuation after stopPlayers()
+            pc.addTransceiver('video', { direction: 'recvonly' });
+            pc.addTransceiver('audio', { direction: 'recvonly' });
+            pc.ontrack = function (e) {
+                if (pc !== mine) return;
+                video.srcObject = e.streams[0];
+                status.innerText = 'LIVE video (WebRTC · low latency)';
+                video.play().catch(function () {});
+            };
+            pc.onconnectionstatechange = function () {
+                if (pc !== mine || !pc) return;
+                if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+                    if (auto) { status.innerText = 'WebRTC dropped — switching to HLS…'; stopPlayers(); playHls(); }
+                    else { status.innerText = 'WebRTC ' + pc.connectionState + ' — retrying…'; setTimeout(function () { if (playerMode() !== 'hls') playVideo(); }, 3000); }
+                }
+            };
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            await waitIceGathering(pc);
+            if (pc !== mine) return;   // superseded while gathering
+            const res = await fetch(whepUrl(), { method: 'POST', headers: { 'Content-Type': 'application/sdp' }, body: pc.localDescription.sdp });
+            if (!res.ok) throw new Error('WHEP HTTP ' + res.status);
+            const answer = await res.text();
+            if (pc !== mine) return;
+            await pc.setRemoteDescription({ type: 'answer', sdp: answer });
+        } catch (err) {
+            if (auto) { status.innerText = 'WebRTC unavailable — using HLS…'; stopPlayers(); playHls(); }
+            else { status.innerText = 'WebRTC error: ' + err.message + ' (retrying)'; setTimeout(function () { if (playerMode() !== 'hls') playVideo(); }, 3000); }
+        }
+    }
+
+    // Fallback / selectable: HLS via hls.js (higher latency, very compatible).
+    function playHls() {
+        const video = document.getElementById('videoEl');
+        const status = document.getElementById('videoStatus');
+        const url = hlsUrl();
+        if (hls) { hls.destroy(); hls = null; }
+        if (window.Hls && window.Hls.isSupported()) {
+            hls = new Hls({ liveSyncDurationCount: 2, lowLatencyMode: true });
+            hls.loadSource(url);
+            hls.attachMedia(video);
+            hls.on(window.Hls.Events.MANIFEST_PARSED, function () { status.innerText = 'LIVE video (HLS)'; video.play().catch(function () {}); });
+            hls.on(window.Hls.Events.ERROR, function (e, d) {
+                if (!d.fatal) return;
+                if (d.type === window.Hls.ErrorTypes.MEDIA_ERROR) { hls.recoverMediaError(); }
+                else if (d.type === window.Hls.ErrorTypes.NETWORK_ERROR) { status.innerText = 'Waiting for stream… (retrying)'; setTimeout(function () { if (hls) hls.startLoad(); }, 3000); }
+                else { status.innerText = 'Video error: ' + d.details + ' (retrying)'; setTimeout(playHls, 3000); }
+            });
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = url; video.play().catch(function () {});
+        } else { status.innerText = 'This browser cannot play HLS.'; return; }
+        status.innerText = 'Loading video…';
+    }
+    function autoMaybeStart() {
+        const auto = document.getElementById('autoStream');
+        if (!auto || !auto.checked) return;
+        if (!client || !client.connected || liveStartSent) return;
+        if (Object.keys(liveVideoIds).length === 0) return;
+        startLive();
+        liveStartSent = true;
+        setTimeout(playVideo, 2500);
+    }
+    // Fill the Camera dropdown from a {video_id: label} map and remember it.
+    function setCameraOptions(found, statusText) {
+        if (Object.keys(found).length === 0) return;
+        if (JSON.stringify(found) === JSON.stringify(liveVideoIds)) { autoMaybeStart(); return; }
+        liveVideoIds = found;
+        const sel = document.getElementById('videoIdSelect');
+        const prev = sel.value;
+        sel.innerHTML = '';
+        for (const id in found) {
+            const opt = document.createElement('option');
+            opt.value = id; opt.text = found[id];
+            sel.appendChild(opt);
+        }
+        if (prev && found[prev]) sel.value = prev;
+        document.getElementById('videoStatus').innerText = statusText || 'Camera(s) detected — ready to Start Live.';
+        autoMaybeStart();
+    }
+
+    // Authoritative source: the device's live_capacity report (arrives on state change).
+    function captureLiveCapacity(payload) {
+        const cap = deepFind(payload, ['live_capacity']);
+        if (!cap || !Array.isArray(cap.device_list)) return;
+        const found = {};
+        for (const dev of cap.device_list) {
+            for (const cam of (dev.camera_list || [])) {
+                for (const vid of (cam.video_list || [])) {
+                    const id = dev.sn + '/' + cam.camera_index + '/' + vid.video_index;
+                    found[id] = (vid.video_type || 'video') + ' · cam ' + cam.camera_index;
+                }
+            }
+        }
+        if (Object.keys(found).length === 0) return;
+        liveCapReported = true;   // once we have this, ignore OSD-derived guesses
+        setCameraOptions(found);
+    }
+
+    // Fallback: derive streamable cameras from the OSD `cameras[]` array. The dock reports
+    // live_capacity only once (often before we connect), but the OSD streams continuously and
+    // carries the real payload_index (e.g. 99-0-0) plus which lenses exist (wide/zoom/ir).
+    function captureCameras(payload) {
+        if (liveCapReported) return;                 // real capacity wins
+        const cams = deepFind(payload, ['cameras']);
+        if (!Array.isArray(cams) || cams.length === 0) return;
+        const sn = droneSn;
+        if (!sn) return;
+        const found = {};
+        for (const cam of cams) {
+            const pidx = cam.payload_index;
+            if (typeof pidx !== 'string') continue;
+            // Offer a default fused stream, plus per-lens streams for whichever lenses the camera reports.
+            found[sn + '/' + pidx + '/normal-0'] = 'normal · ' + pidx;
+            const hasKey = (pfx) => Object.keys(cam).some(k => k.indexOf(pfx) === 0);
+            if (hasKey('wide_')) found[sn + '/' + pidx + '/wide-0'] = 'wide · ' + pidx;
+            if (hasKey('zoom_')) found[sn + '/' + pidx + '/zoom-0'] = 'zoom · ' + pidx;
+            if (hasKey('ir_')) found[sn + '/' + pidx + '/ir-0'] = 'IR/thermal · ' + pidx;
+        }
+        setCameraOptions(found, 'Camera(s) from OSD — ready to Start Live.');
+    }
+
+    // ---- Gimbal control (needs cloud-control authority; pilot accepts on the RC) ----
+    let authGranted = false;
+    let gimbalPayloadIndex = null;   // captured live from the OSD (e.g. "68-0-0" on the M3M)
+
+    function gmsg(text, color) {
+        const el = document.getElementById('gimbal-msg');
+        if (el) { el.innerText = text; el.style.color = color || 'var(--muted)'; }
+    }
+
+    // Step 1: ask the aircraft for control authority. Reply comes back "in_progress" and the
+    // RC shows a popup the pilot must accept; then a final reply grants it.
+    function requestControl() {
+        if (!client || !client.connected) { gmsg('✗ Not connected to the broker.', 'var(--bad)'); return; }
+        if (!rcSn) { gmsg('✗ No RC/gateway SN yet.', 'var(--bad)'); return; }
+        publishService('cloud_control_auth_request', {}, rcSn);
+        setText('gimbal-status', 'requesting…');
+        gmsg('Authority requested → on the RC, go to Pilot 2\'s FLIGHT view (not the cloud page) and ACCEPT the control popup.', 'var(--warn)');
+    }
+
+    // Route control replies to the visible gimbal panel (not just the collapsed log).
+    function handleControlReply(topic, payload) {
+        if (!topic.endsWith('/services_reply')) return;
+        const data = payload.data || {};
+        const status = data.output && data.output.status;
+        if (payload.method === 'cloud_control_auth_request') {
+            if (status === 'in_progress') {
+                gmsg('⏳ Waiting — on the RC, switch to Pilot 2\'s FLIGHT view and ACCEPT the control-request popup.', 'var(--warn)');
+                setText('gimbal-status', 'accept on RC');
+            } else if (data.result === 0) {
+                authGranted = true;
+                gmsg('✓ Control authority granted. Now press ▼ Point Down / ▲ Point Forward.', 'var(--good)');
+                setText('gimbal-status', 'control granted');
+            } else {
+                gmsg('✗ Authority denied (result ' + data.result + ').', 'var(--bad)');
+            }
+        } else if (payload.method === 'gimbal_reset') {
+            if (data.result === 0) gmsg('✓ gimbal_reset accepted — watch the pitch value change.', 'var(--good)');
+            else gmsg('✗ gimbal_reset rejected (result ' + data.result + '). Paste me this reply.', 'var(--bad)');
+        }
+    }
+
+    // Prefer the payload_index the drone actually reports; fall back to the live_capacity camera.
+    function payloadIndex() {
+        if (gimbalPayloadIndex) return gimbalPayloadIndex;
+        const vid = document.getElementById('videoIdSelect').value;
+        if (vid && vid.split('/').length >= 2) return vid.split('/')[1];
+        return '68-0-0';   // M3M main gimbal (from your OSD)
+    }
+
+    // Step 2: send the gimbal command to the aircraft payload. Requires authority granted (step 1).
+    function gimbalPoint(dir) {
+        if (!client || !client.connected) {
+            gmsg('✗ Not connected to the broker. Click Connect (top bar) first.', 'var(--bad)');
+            setText('gimbal-status', 'not connected');
+            return;
+        }
+        if (!droneSn) {
+            gmsg('✗ No drone SN yet — the drone must be online (check Telemetry).', 'var(--bad)');
+            setText('gimbal-status', 'no drone');
+            return;
+        }
+        if (!authGranted) {
+            gmsg('⚠ Press ① Request Control first and ACCEPT the popup on the RC — sending anyway…', 'var(--warn)');
+        }
+
+        // reset_mode: 0 = recenter (forward/level), 1 = pitch straight down.
+        const resetMode = (dir === 'down') ? 1 : 0;
+        const pidx = payloadIndex();
+        // DJI Cloud API: service commands go to the GATEWAY (RC) topic, not the aircraft's.
+        // Only the RC is an MQTT client; the aircraft's payload is targeted via payload_index.
+        const gatewaySn = rcSn || droneSn;
+        publishService('gimbal_reset', { payload_index: pidx, reset_mode: resetMode }, gatewaySn);
+        setText('gimbal-status', dir === 'down' ? 'sent ▼' : 'sent ▲');
+        gmsg('Sent gimbal_reset (' + (dir === 'down' ? 'down' : 'front') + ') to gateway ' + gatewaySn
+            + ', payload ' + pidx + ' — watch the pitch value + services_reply.', 'var(--text)');
+    }
+
+    function recordTopic(topic) { topicCounts[topic] = (topicCounts[topic] || 0) + 1; renderDiagnostics(); }
+
+    function renderDiagnostics() {
+        const fields = [
+            ['Latitude', 'val-lat'], ['Longitude', 'val-lon'], ['GPS', 'val-gps'],
+            ['RTK', 'val-rtk'], ['Mode', 'val-mode'],
+        ];
+        let html = '<div class="diag-section">Cloud handshake:</div>';
+        html += `<div class="diag-row"><span class="${replyCount > 0 ? 'field-ok' : 'field-missing'}">${replyCount > 0 ? '✓' : '✗'} Handshake acks sent</span><span class="diag-count">${replyCount}</span></div>`;
+        const camCount = Object.keys(liveVideoIds).length;
+        html += '<div class="diag-section">Live video:</div>';
+        html += `<div class="diag-row"><span class="${camCount > 0 ? 'field-ok' : 'field-missing'}">${camCount > 0 ? '✓' : '✗'} Cameras (live_capacity)</span><span class="diag-count">${camCount}</span></div>`;
+        html += `<div class="diag-row"><span class="${liveCommandsSent > 0 ? 'field-ok' : 'field-missing'}">${liveCommandsSent > 0 ? '✓' : '✗'} live cmds sent</span><span class="diag-count">${liveCommandsSent}</span></div>`;
+        html += `<div class="diag-row"><span class="${lastServiceResult === 0 ? 'field-ok' : 'field-missing'}">Last service reply (0=ok)</span><span class="diag-count">${lastServiceResult === null ? '—' : lastServiceResult}</span></div>`;
+        html += '<div class="diag-section">Telemetry fields detected:</div>';
+        for (const [label, id] of fields) {
+            if (fieldSource[id]) html += `<div class="diag-row"><span class="field-ok">&#10003; ${label}</span><span class="diag-count">${redact(fieldSource[id])}</span></div>`;
+            else html += `<div class="diag-row"><span class="field-missing">&#10007; ${label}</span><span class="diag-count"></span></div>`;
+        }
+        html += '<div class="diag-section">Topics received (green = OSD):</div>';
+        const topics = Object.keys(topicCounts).sort();
+        if (topics.length === 0) html += '<div class="diag-row"><span class="field-missing">No topics yet.</span></div>';
+        else for (const t of topics) {
+            const isOsd = t.includes('/osd');
+            html += `<div class="diag-row"><span class="${isOsd ? 'diag-osd' : 'diag-topic'}">${redact(t)}</span><span class="diag-count">${topicCounts[t]} msg</span></div>`;
+        }
+        topicStats.innerHTML = html;
+    }
+
+    function setStatus(text, cls) { statusBadge.innerText = text; statusBadge.className = 'status-badge' + (cls ? ' ' + cls : ''); }
+
+    // ---- Session file saving ----
+    function fmtStamp(d) {
+        const p = function (n) { return String(n).padStart(2, '0'); };
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+             + '_' + p(d.getHours()) + '-' + p(d.getMinutes()) + '-' + p(d.getSeconds());
+    }
+
+    function downloadBlob(content, fname) {
+        const blob = new Blob([content], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = fname;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+    }
+
+    // Write the whole session's raw MQTT log to json/mqtt-raw_<session-start>.json.
+    // Prefers the File System Access API (writes into a "json" folder you pick once per session);
+    // falls back to a normal download if that API isn't available or you cancel.
+    async function saveSession() {
+        if (!rawLog.length || !sessionStart) return;
+        const fname = 'mqtt-raw_' + fmtStamp(sessionStart) + '.json';
+        const content = JSON.stringify({
+            session_start: sessionStart.toISOString(),
+            session_end: new Date().toISOString(),
+            message_count: rawLog.length,
+            messages: rawLog
+        }, null, 2);
+
+        // Preferred: POST to serve.py, which writes straight into ./json/ (fully automatic, no dialog).
+        try {
+            const res = await fetch('/save?name=' + encodeURIComponent(fname), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: content
+            });
+            if (res && res.ok) {
+                logMessage('System', 'Saved json/' + fname + ' (' + rawLog.length + ' messages).');
+                return;
+            }
+        } catch (e) { /* serve.py not running — fall back to a download */ }
+
+        downloadBlob(content, fname);
+        logMessage('System', 'Downloaded ' + fname + ' (' + rawLog.length + ' messages). Run serve.py to auto-save into json/.');
+    }
+
+    function connectMQTT() {
+        manualDisconnect = false;
+        const url = document.getElementById('brokerUrl').value;
+        setStatus('Connecting…', 'status-connecting');
+        const opts = { clientId: (CFG.clientPrefix || 'm3m') + '_dashboard_' + Math.random().toString(16).substr(2, 8) };
+        // The cloud broker requires auth (it is NOT anonymous). Fall back to the backend
+        // login if config.js doesn't override. For a local anonymous broker these are ignored.
+        opts.username = CFG.mqttUser || 'backend';
+        opts.password = CFG.mqttPass || 'YebiwOH9';
+        client = mqtt.connect(url, opts);
+
+        client.on('connect', () => {
+            setStatus('Connected', 'status-online');
+            messageLog.innerHTML = '';
+            sessionStart = new Date();   // begin a new recording session
+            rawLog = [];
+            logMessage('System', 'Connected to broker. Subscribing to all topics (#)...');
+            client.subscribe('#', (err) => { if (err) logMessage('System Error', 'Failed to subscribe'); });
+            if (freshTimer) clearInterval(freshTimer);
+            freshTimer = setInterval(updateFreshness, 1000);
+            const auto = document.getElementById('autoStream');
+            if (auto && auto.checked) { playVideo(); autoMaybeStart(); }
+        });
+
+        client.on('message', (topic, message) => {
+            let payload = null, isJson = true;
+            try { payload = JSON.parse(message.toString()); } catch (e) { isJson = false; }
+            rawLog.push({ ts: new Date().toISOString(), topic: topic, payload: isJson ? payload : message.toString() });
+            if (rawLog.length > RAW_LOG_CAP) rawLog.shift();
+            captureSNs(topic, isJson ? payload : null);   // learn SNs first so redaction masks them
+            if (isJson && topic.includes('sys/product/') && topic.includes('/status')) {
+                try { handleTopology(topic, payload); } catch (e) {}
+            }
+            recordTopic(topic);
+            if (!isJson) { logMessage(topic, message.toString() + ' (Not JSON)'); return; }
+            logMessage(topic, payload);
+            try {
+                handleHandshake(topic, payload);
+                applyTelemetry(topic, payload);
+                captureLiveCapacity(payload);
+                captureCameras(payload);
+                handleControlReply(topic, payload);
+                if (topic.endsWith('/services_reply')) {
+                    const r = deepFind(payload, ['result']);
+                    if (r !== undefined) lastServiceResult = r;
+                }
+            } catch (e) { logMessage('Telemetry Error', 'Failed on ' + topic + ': ' + e.message); }
+        });
+
+        client.on('error', (err) => { setStatus('Error', 'status-error'); logMessage('Connection Error', err.message); client.end(); });
+        client.on('reconnect', () => setStatus('Reconnecting…', 'status-connecting'));
+        client.on('close', () => { if (statusBadge.innerText === 'Connected') setStatus('Offline'); });
+    }
+
+    // Clear all telemetry/map/state back to the empty startup look.
+    function resetTelemetry() {
+        Object.keys(state).forEach(function (k) { state[k] = null; });
+        rcSn = null; droneSn = null; lastOsdTime = 0;
+        authGranted = false; liveStartSent = false; liveCapReported = false; liveVideoIds = {};
+        Object.keys(fieldRank).forEach(function (k) { delete fieldRank[k]; });
+        Object.keys(fieldSource).forEach(function (k) { delete fieldSource[k]; });
+
+        ['val-rc-sn', 'val-drone-sn', 'val-lat', 'val-lon', 'val-gps', 'val-rtk', 'val-mode'].forEach(function (id) { setText(id, '—'); });
+        var sp = document.getElementById('val-stream');
+        if (sp) { sp.innerText = 'no data'; sp.className = 'pill stream-stale'; }
+
+        document.getElementById('card-battery').innerHTML = '--<small>%</small>';
+        document.getElementById('bar-battery').style.width = '0%';
+        setText('card-rc-battery', 'RC: --%');
+        document.getElementById('card-alt').innerHTML = '--<small> m</small>';
+        setText('card-alt-abs', 'abs: --');
+        document.getElementById('card-hspeed').innerHTML = '--<small> m/s</small>';
+        setText('card-vspeed', 'vertical: -- m/s');
+        document.getElementById('card-dist').innerHTML = '--<small> m</small>';
+        setText('card-heading', 'heading: --°');
+
+        setText('g-pitch', '—'); setText('g-yaw', '—'); setText('g-pidx', '—');
+        setText('gimbal-status', 'idle');
+
+        var mc = document.getElementById('map-coords'); if (mc) mc.innerText = 'no fix';
+        if (droneMarker) { map.removeLayer(droneMarker); droneMarker = null; }
+        if (homeMarker) { map.removeLayer(homeMarker); homeMarker = null; }
+        trailPoints.length = 0; if (trailLine) trailLine.setLatLngs([]); centeredOnce = false;
+
+        try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}   // don't repaint stale data on refresh
+    }
+
+    async function disconnectMQTT() {
+        manualDisconnect = true;
+        if (freshTimer) { clearInterval(freshTimer); freshTimer = null; }
+        stopPlayers();
+        // Close hard so MQTT.js does NOT auto-reconnect.
+        if (client) {
+            try { client.options.reconnectPeriod = 0; } catch (e) {}
+            try { client.end(true); } catch (e) {}
+            client = null;
+        }
+        setStatus('Offline');
+        await saveSession();     // save after the socket is closed (log is in memory; POST is instant)
+        resetTelemetry();
+        logMessage('System', 'Disconnected by user — log saved, telemetry reset.');
+    }
+
+    // ---- Boot ----
+    if (CFG.brokerWsUrl) document.getElementById('brokerUrl').value = CFG.brokerWsUrl;
+    if (CFG.mediaHost) document.getElementById('mediaHost').value = CFG.mediaHost;
+    initMap();
+    restoreState();
+    refreshUrls();
+    if (window.mqtt) connectMQTT();
+</script>
+</body>
+</html>

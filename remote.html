@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DJI Pilot 2 Link Portal</title>
+    <style>
+        body { font-family: sans-serif; background-color: #121212; color: #fff; padding: 20px; }
+        .card { background: #222; padding: 20px; border-radius: 8px; max-width: 520px; margin: 0 auto; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        h2 { margin-top: 0; }
+        button { background: #0078d7; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 12px;}
+        button.secondary { background: #444; }
+        .status { color: #ffaa00; font-weight: bold; margin: 12px 0; min-height: 22px;}
+        .cfg { background:#1a1a1a; border:1px solid #444; border-radius:6px; padding:10px 12px; font-size:13px; }
+        .cfg div { display:flex; justify-content:space-between; padding:3px 0; }
+        .cfg span { color:#888; }
+        .cfg b { color:#0f0; font-family:monospace; }
+        .log { background:#000; height: 220px; overflow-y:auto; margin-top:14px; padding:10px; border-radius:4px; font-family:monospace; font-size:12px; white-space:pre-wrap; }
+        .hint { font-size:12px; color:#888; line-height:1.5; }
+        .pill { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; margin-left:6px; }
+        .on { background:#107c10; } .off { background:#d13438; }
+    </style>
+    <script src="config.js"></script>
+</head>
+<body>
+
+<div class="card">
+    <h2>Custom Cloud Bridge</h2>
+    <p class="hint">Credentials are set in the <b>CONFIG</b> block inside this file's code — you don't type anything here. Open this page inside <b>DJI Pilot 2 &rarr; Cloud Services</b> and it will verify + connect automatically.</p>
+
+    <div class="cfg">
+        <div><span>Broker</span> <b id="cfg-broker">&mdash;</b></div>
+        <div><span>MQTT user</span> <b id="cfg-user">&mdash;</b></div>
+        <div><span>App ID</span> <b id="cfg-appid">&mdash;</b></div>
+        <div><span>App License</span> <b id="cfg-license">&mdash;</b></div>
+    </div>
+
+    <div id="bridgeStatus" class="status">Checking environment...</div>
+
+    <div id="notInPilot" style="display:none; background:#3a1f1f; border:1px solid #d13438; padding:12px; border-radius:6px; margin:10px 0; font-size:13px; line-height:1.6;">
+        <b style="color:#ff8a8a;">This page is not running inside DJI Pilot 2.</b><br>
+        <code>window.djiBridge</code> is only injected by the Pilot 2 app, so a normal browser can't use it. To run it correctly:
+        <ol style="margin:8px 0 0 18px; padding:0;">
+            <li>Host this file on your PC: in this folder run <code>python -m http.server 8080</code> (or <code>npx http-server -p 8080</code>).</li>
+            <li>On the controller, open <b>Pilot 2 &rarr; Cloud Services</b> and enter <code>http://192.168.20.84:8080/pilot.html</code> (your PC's IP).</li>
+            <li>Pilot 2 opens it in its own web view, where the bridge exists, and this banner disappears.</li>
+        </ol>
+    </div>
+
+    <div>
+        Pilot 2 bridge <span id="pill-bridge" class="pill off">no</span>
+        License <span id="pill-lic" class="pill off">no</span>
+        Thing module <span id="pill-thing" class="pill off">no</span>
+        MQTT <span id="pill-conn" class="pill off">no</span>
+    </div>
+
+    <button onclick="initializeDJICloud()">Connect Controller to MQTT</button>
+    <button class="secondary" onclick="checkState()">Check Connection State</button>
+    <button class="secondary" onclick="listBridgeApi()">List Bridge API</button>
+    <button class="secondary" onclick="stopBridge()">Disconnect</button>
+
+    <div id="log" class="log"></div>
+</div>
+
+<script>
+    /* ============================ CONFIG ============================
+       Credentials now live in config.js (loaded above), NOT in this file.
+       Edit config.js to change the App ID/Key/License, broker, or MQTT login.
+       ================================================================ */
+    const _CFG = window.APP_CONFIG || {};
+    const CONFIG = {
+        appId:       _CFG.appId || "",
+        appKey:      _CFG.appKey || "",
+        appLicense:  _CFG.appLicense || "",
+        brokerHost:  _CFG.brokerHost || "192.168.20.84",
+        brokerPort:  _CFG.brokerPort || "1883",
+        brokerTls:   _CFG.brokerTls || false,
+        mqttUser:    _CFG.mqttUser || "",   // blank if broker allows anonymous
+        mqttPass:    _CFG.mqttPass || "",
+        // Pilot 2 requires the workspace id to be a real UUID (it calls java.util.UUID.fromString
+        // on it). A non-UUID like "workspace-custom-001" throws IllegalArgumentException (615000)
+        // and aborts onboarding. Keep this a valid UUID; override via config.js if you have one.
+        workspaceId: _CFG.workspaceId || "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+        autoConnect: true                   // verify + connect automatically once Pilot 2 loads this page
+    };
+    /* ================================================================ */
+
+    let monitorTimer = null;
+
+    // Diagnostic log that SURVIVES a page reload (persisted to localStorage). This is how we tell
+    // whether Pilot 2 keeps this page alive in the background or destroys + reloads it.
+    let sessionLines = [];
+    function log(msg, color) {
+        const entry = { t: new Date().toLocaleTimeString(), msg: msg, color: color || '#ddd' };
+        sessionLines.unshift(entry);
+        if (sessionLines.length > 300) sessionLines.pop();
+        try { localStorage.setItem('pilot_cur_log', JSON.stringify(sessionLines)); } catch (e) {}
+        const el = document.getElementById('log');
+        if (!el) return;
+        const line = document.createElement('div');
+        line.style.color = entry.color;
+        line.textContent = '[' + entry.t + '] ' + entry.msg;
+        el.prepend(line);
+    }
+
+    // On load, show the PREVIOUS page-session's log (dimmed). If a block appears, Pilot 2 reloaded
+    // (destroyed) this page rather than keeping it alive — which is why the connection dropped.
+    function restorePrevLog() {
+        let prev = [];
+        try { prev = JSON.parse(localStorage.getItem('pilot_cur_log') || '[]'); } catch (e) {}
+        try { localStorage.removeItem('pilot_cur_log'); } catch (e) {}
+        const el = document.getElementById('log');
+        if (prev.length && el) {
+            const hdr = document.createElement('div');
+            hdr.style.color = '#ffb000';
+            hdr.textContent = '──— previous page session (before this reload) —──';
+            el.appendChild(hdr);
+            prev.forEach(function (e) {
+                const d = document.createElement('div');
+                d.style.color = '#666';
+                d.textContent = '[' + e.t + '] ' + e.msg;
+                el.appendChild(d);
+            });
+            log('PAGE RELOADED by Pilot 2 → it DESTROYED the page (see dimmed block below). A destroyed page cannot hold the connection in the background.', '#f80');
+        }
+    }
+
+    // Enumerate every method the injected bridge exposes — replaces guessing about apiGetToken etc.
+    function listBridgeApi() {
+        if (!window.djiBridge) { log('djiBridge missing — open this page inside Pilot 2.', '#f55'); return; }
+        const names = {};
+        let o = window.djiBridge;
+        while (o && o !== Object.prototype) {
+            Object.getOwnPropertyNames(o).forEach(function (k) {
+                try { if (typeof window.djiBridge[k] === 'function') names[k] = true; } catch (e) {}
+            });
+            o = Object.getPrototypeOf(o);
+        }
+        const list = Object.keys(names).sort();
+        log('djiBridge exposes ' + list.length + ' methods:', '#0ff');
+        log(list.join(', '), '#0ff');
+        ['apiGetToken', 'platformLoadComponent', 'platformIsVerified'].forEach(function (m) {
+            log((list.indexOf(m) >= 0 ? '✓ has ' : '✗ NO ') + m + '()', list.indexOf(m) >= 0 ? '#0f0' : '#f80');
+        });
+    }
+
+    // Log Pilot 2's webview lifecycle so we can see suspend-vs-destroy and connection state on return.
+    function wireLifecycle() {
+        const evts = ['visibilitychange', 'pagehide', 'pageshow', 'freeze', 'resume', 'beforeunload'];
+        evts.forEach(function (evt) {
+            const target = (evt === 'visibilitychange') ? document : window;
+            target.addEventListener(evt, function () {
+                let extra = '';
+                if (evt === 'visibilitychange') extra = ' → ' + document.visibilityState;
+                if (evt === 'pageshow') extra = arguments[0] && arguments[0].persisted ? ' (from bfcache — page was KEPT alive)' : ' (fresh)';
+                log('LIFECYCLE: ' + evt + extra, '#ff0');
+                if (evt === 'visibilitychange' && window.djiBridge && typeof window.djiBridge.thingGetConnectState === 'function') {
+                    try { log('  connState @' + document.visibilityState + ' = ' + window.djiBridge.thingGetConnectState()); } catch (e) {}
+                }
+            });
+        });
+    }
+
+    function setStatus(msg, color) {
+        const s = document.getElementById('bridgeStatus');
+        s.innerText = msg;
+        if (color) s.style.color = color;
+    }
+
+    function pill(id, on) {
+        const el = document.getElementById(id);
+        el.className = 'pill ' + (on ? 'on' : 'off');
+        el.innerText = on ? 'yes' : 'no';
+    }
+
+    function isPlaceholder(v) { return !v || v.indexOf('REPLACE_') === 0; }
+    function credsReady() {
+        return !isPlaceholder(CONFIG.appId) && !isPlaceholder(CONFIG.appKey) && !isPlaceholder(CONFIG.appLicense);
+    }
+
+    function renderConfigSummary() {
+        const mask = function (s) {
+            if (isPlaceholder(s)) return '(not set)';
+            return s.length <= 10 ? s : s.slice(0, 6) + '…' + s.slice(-4);
+        };
+        document.getElementById('cfg-broker').innerText = 'tcp://' + CONFIG.brokerHost + ':' + CONFIG.brokerPort;
+        document.getElementById('cfg-user').innerText = CONFIG.mqttUser ? CONFIG.mqttUser : 'anonymous';
+        document.getElementById('cfg-appid').innerText = mask(CONFIG.appId);
+        document.getElementById('cfg-license').innerText = mask(CONFIG.appLicense);
+    }
+
+    // Safely call a djiBridge method. Bridge methods return JSON strings — parse when possible.
+    function callBridge(method) {
+        const args = Array.prototype.slice.call(arguments, 1);
+        if (!window.djiBridge) { log('djiBridge missing', '#f55'); return null; }
+        if (typeof window.djiBridge[method] !== 'function') {
+            log('djiBridge.' + method + '() not available in this MSDK version', '#fa0');
+            return null;
+        }
+        let raw;
+        try {
+            raw = window.djiBridge[method].apply(window.djiBridge, args);
+        } catch (e) {
+            log(method + '() threw: ' + e.message, '#f55');
+            return null;
+        }
+        let parsed = raw;
+        if (typeof raw === 'string') { try { parsed = JSON.parse(raw); } catch (e) { /* keep string */ } }
+        log(method + '() => ' + (typeof raw === 'string' ? raw : JSON.stringify(raw)));
+        return parsed;
+    }
+
+    function isConnected(stateObj) {
+        if (!stateObj) return false;
+        const d = stateObj.data !== undefined ? stateObj.data : stateObj;
+        if (d === true || d === 1) return true;
+        if (d && (d.connectState === 1 || d.connectState === true)) return true;
+        return false;
+    }
+
+    // ---- Global callback invoked by the native layer when the thing (MQTT) connection changes ----
+    window.onThingConnect = function (data) {
+        let d = data;
+        if (typeof data === 'string') { try { d = JSON.parse(data); } catch (e) {} }
+        log('thing connectCallback: ' + JSON.stringify(d), '#0f0');
+        const ok = isConnected(d);
+        pill('pill-conn', ok);
+        if (ok) setStatus('MQTT connected — telemetry should now be streaming.', '#0f0');
+    };
+
+    // ---- Live streaming status from the liveshare module (bitrate/fps/latency/errors) ----
+    // Fires once liveshare is loaded and a push is active. Handy to see WHY a push fails.
+    window.onLiveshareStatus = function (data) {
+        let d = data;
+        if (typeof data === 'string') { try { d = JSON.parse(data); } catch (e) {} }
+        log('liveshare status: ' + JSON.stringify(d), '#0cf');
+    };
+
+    function buildThingParam() {
+        // ssl:// for a TLS broker (port 8883 / mqtts), tcp:// for a plain broker.
+        var proto = CONFIG.brokerTls ? 'ssl://' : 'tcp://';
+        return JSON.stringify({
+            host: proto + CONFIG.brokerHost + ':' + CONFIG.brokerPort,
+            username: CONFIG.mqttUser,
+            password: CONFIG.mqttPass,
+            connectCallback: 'onThingConnect'
+        });
+    }
+
+    function initializeDJICloud() {
+        if (!window.djiBridge) {
+            setStatus('Error: JSBridge not found. Open this page inside DJI Pilot 2 → Cloud Services.', '#f55');
+            return;
+        }
+        if (!credsReady()) {
+            setStatus('Edit the CONFIG block at the top of pilot.html with your App ID / Key / License, then reload.', '#fa0');
+            return;
+        }
+
+        // 1) Verify the app license. This is what stops the "connect then auto-logout".
+        setStatus('Verifying license...', '#fa0');
+        const lic = callBridge('platformVerifyLicense', CONFIG.appId, CONFIG.appKey, CONFIG.appLicense);
+        const verified = callBridge('platformIsVerified');
+        // Verified ONLY when data === true. code:0 just means the call executed — code:0 + data:false
+        // is an UNLICENSED app. Gating on code:0 (the old bug) let a transient MQTT socket open that
+        // Pilot 2 dropped the instant you left the page. Never treat code:0 as success.
+        const licOk = isConnected(verified) || (lic && lic.data === true);
+        pill('pill-lic', licOk);
+        if (!licOk) {
+            setStatus('License NOT verified — check App ID/Key/License and that the app domain matches. Stopping to avoid logout.', '#f55');
+            return;
+        }
+
+        // 2) Identify the platform/workspace (guarded — names vary across versions).
+        callBridge('platformSetInformation', 'MyCustomPlatform', 'Local Dev Workspace', 'Active Telemetry Pipe');
+        if (typeof window.djiBridge.platformSetWorkspaceId === 'function') {
+            callBridge('platformSetWorkspaceId', CONFIG.workspaceId);
+        }
+
+        // 3) Load the "thing" module — THIS is the MQTT/OSD pipe (not "cloud").
+        setStatus('Loading thing (MQTT) module...', '#fa0');
+        callBridge('platformLoadComponent', 'thing', buildThingParam());
+
+        const loaded = callBridge('platformIsComponentLoaded', 'thing');
+        pill('pill-thing', isConnected(loaded));
+
+        // 3b) Load the LIVESHARE module so the dashboard's cloud command (live_start_push over MQTT)
+        // actually pushes video. 'video-on-demand' = server-initiated and DEPENDS on the thing
+        // module, so it must load AFTER thing. Without this module the aircraft ACKs live_start_push
+        // (result:0) but never pushes — exactly the "manual RTMP works, dashboard Start doesn't" symptom.
+        setStatus('Loading liveshare (live video) module...', '#fa0');
+        callBridge('platformLoadComponent', 'liveshare', JSON.stringify({
+            videoPublishType: 'video-on-demand',
+            statusCallback: 'onLiveshareStatus'
+        }));
+        callBridge('platformIsComponentLoaded', 'liveshare');
+
+        // 4) Probe state now, then keep it alive while the page is open.
+        checkState();
+        startMonitor();
+        setStatus('Bridge started. Watching connection…', '#fa0');
+    }
+
+    function checkState() {
+        const st = callBridge('thingGetConnectState');
+        const ok = isConnected(st);
+        pill('pill-conn', ok);
+        log(ok ? 'MQTT is CONNECTED' : 'MQTT is NOT connected', ok ? '#0f0' : '#fa0');
+        return ok;
+    }
+
+    // While this page stays open, recover the connection if it drops.
+    function startMonitor() {
+        if (monitorTimer) clearInterval(monitorTimer);
+        let misses = 0;   // consecutive "not connected" reads; persists across ticks via closure
+        monitorTimer = setInterval(function () {
+            // thingGetConnectState() returns a JSON *string* — parse it before checking, or
+            // isConnected() sees a string and always reports "disconnected" (caused reload churn).
+            let st = null;
+            if (window.djiBridge && typeof window.djiBridge.thingGetConnectState === 'function') {
+                const raw = window.djiBridge.thingGetConnectState();
+                if (typeof raw === 'string') { try { st = JSON.parse(raw); } catch (e) { st = raw; } }
+                else st = raw;
+            }
+            const ok = isConnected(st);
+            log('heartbeat: connState=' + (ok ? 'CONNECTED' : 'not connected') + ' visibility=' + document.visibilityState, ok ? '#0a0' : '#fa0');
+            pill('pill-conn', ok);
+            if (ok) { misses = 0; return; }
+            // Only reload after ~20s of sustained disconnection, so a transient blip (or the
+            // in-progress first connect) doesn't trigger a reload → reconnect → reload loop.
+            misses++;
+            if (misses >= 2) {
+                log('Connection down ~' + (misses * 10) + 's — reloading thing module…', '#fa0');
+                callBridge('platformLoadComponent', 'thing', buildThingParam());
+                misses = 0;
+            }
+        }, 10000);
+    }
+
+    function stopBridge() {
+        if (monitorTimer) { clearInterval(monitorTimer); monitorTimer = null; }
+        callBridge('platformUnloadComponent', 'thing');
+        pill('pill-conn', false);
+        pill('pill-thing', false);
+        setStatus('Disconnected by user.', '#fa0');
+    }
+
+    // Pilot 2 injects window.djiBridge — sometimes a moment after load. Poll briefly,
+    // then either auto-connect (inside Pilot 2) or explain (normal browser).
+    let bridgeChecks = 0;
+    function checkBridgePresence() {
+        if (window.djiBridge) {
+            pill('pill-bridge', true);
+            document.getElementById('notInPilot').style.display = 'none';
+            if (!credsReady()) {
+                setStatus('Pilot 2 detected, but CONFIG still has placeholder credentials — edit pilot.html.', '#fa0');
+            } else if (CONFIG.autoConnect) {
+                setStatus('Pilot 2 detected — auto-connecting…', '#0f0');
+                setTimeout(initializeDJICloud, 800);
+            } else {
+                setStatus('Pilot 2 detected — tap Connect.', '#0f0');
+            }
+            return;
+        }
+        bridgeChecks++;
+        if (bridgeChecks < 12) { setTimeout(checkBridgePresence, 500); return; }  // retry ~6s
+        pill('pill-bridge', false);
+        document.getElementById('notInPilot').style.display = 'block';
+        setStatus('JSBridge not found — open this page inside DJI Pilot 2 (see note above).', '#f55');
+    }
+
+    window.addEventListener('load', function () {
+        renderConfigSummary();
+        restorePrevLog();     // show prior session + flag if Pilot 2 reloaded us
+        wireLifecycle();      // log suspend/destroy events + connection state on background
+        log('Page loaded at ' + new Date().toLocaleTimeString() + '. Tap "List Bridge API" to see what this Pilot 2 build exposes.', '#0ff');
+        checkBridgePresence();
+    });
+</script>
+
+</body>
+</html>
