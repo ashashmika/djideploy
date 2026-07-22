@@ -8,7 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="config.js"></script>
+    <script src="config.js?v=20260722-media-push"></script>
     <style>
         :root {
             --bg: #14161a;
@@ -655,6 +655,8 @@
         return tail ? base + '/' + tail : base;
     }
     function rtmpUrl() {
+        const configuredPush = normalizeMediaInput(CFG.mediaPushUrl);
+        if (configuredPush) return configuredPush;
         const value = normalizeMediaInput(document.getElementById('mediaHost').value);
         if (!value) return '';
         const stream = streamPath();
