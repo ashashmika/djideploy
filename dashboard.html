@@ -111,7 +111,7 @@
 <div class="container">
 
     <div class="topbar">
-        <h1><span class="dot">●</span> DJI M3M Operations</h1>
+        <h1><span class="dot">●</span> DJI Dashboard</h1>
         <input type="text" id="brokerUrl" value="wss://mqtt.djidock.idea8.cloud:443/mqtt" style="width:260px">
         <button class="btn-connect" onclick="connectMQTT()">Connect</button>
         <button class="btn-disconnect btn-small" onclick="disconnectMQTT()">Disconnect</button>
@@ -828,6 +828,14 @@
         liveStartSent = true;
         setTimeout(playVideo, 2500);
     }
+    function cameraSortRank(id, label) {
+        const text = ((label || '') + ' ' + (id || '')).toLowerCase();
+        if (text.includes('normal-0') || text.includes('normal')) return 0;
+        if (text.includes('wide') || text.includes('zoom')) return 1;
+        if (text.includes('multi-spectral') || text.includes('multispectral')) return 2;
+        return 3;
+    }
+
     // Fill the Camera dropdown from a {video_id: label} map and remember it.
     function setCameraOptions(found, statusText) {
         if (Object.keys(found).length === 0) return;
@@ -836,7 +844,13 @@
         const sel = document.getElementById('videoIdSelect');
         const prev = sel.value;
         sel.innerHTML = '';
-        for (const id in found) {
+        const ids = Object.keys(found).sort(function (a, b) {
+            const ar = cameraSortRank(a, found[a]);
+            const br = cameraSortRank(b, found[b]);
+            if (ar !== br) return ar - br;
+            return String(found[a]).localeCompare(String(found[b]));
+        });
+        for (const id of ids) {
             const opt = document.createElement('option');
             opt.value = id; opt.text = found[id];
             sel.appendChild(opt);
