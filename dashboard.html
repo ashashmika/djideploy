@@ -81,7 +81,7 @@
 
         /* ---- Video ---- */
         .video-frame { width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 10px; overflow: hidden; }
-        .video-frame video { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
+        .video-frame video, .video-frame iframe { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; border: 0; }
         .video-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
         .video-controls input, .video-controls select { padding: 7px; background: var(--panel-2); border: 1px solid var(--border); color: #fff; border-radius: 6px; font-size: 12px; }
         .video-controls label { font-size: 12px; color: var(--muted); }
@@ -188,7 +188,7 @@
 
             <div class="panel">
                 <h3>Live Video</h3>
-                <div class="video-frame"><video id="videoEl" controls autoplay muted playsinline></video></div>
+                <div class="video-frame"><video id="videoEl" controls autoplay muted playsinline></video><iframe id="webrtcFrame" title="WebRTC live video" allow="autoplay; fullscreen; camera; microphone" allowfullscreen style="display:none"></iframe></div>
                 <div id="videoStatus" style="font-size:12px;color:var(--muted);margin:8px 0;">Idle — auto-starts on connect.</div>
                 <div class="video-controls">
                     <label>Server <input type="text" id="mediaHost" value="https://camera.djidock.idea8.cloud/dock-camera" style="width:220px" oninput="refreshUrls()" placeholder="host or full URL"></label>
@@ -685,6 +685,7 @@
     function whepUrl() {
         const configuredWhep = normalizeMediaInput(CFG.mediaWhepUrl);
         if (configuredWhep) return configuredWhep;
+        if (CFG.mediaWhepUrl === '') return '';
         const value = normalizeMediaInput(document.getElementById('mediaHost').value);
         if (!value) return '';
         const stream = streamPath();
@@ -739,7 +740,9 @@
         if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
         if (pc) { try { pc.close(); } catch (e) {} pc = null; }
         const v = document.getElementById('videoEl');
-        if (v) { try { v.srcObject = null; } catch (e) {} v.removeAttribute('src'); }
+        if (v) { try { v.srcObject = null; } catch (e) {} v.removeAttribute('src'); v.style.display = 'block'; }
+        const frame = document.getElementById('webrtcFrame');
+        if (frame) { frame.removeAttribute('src'); frame.style.display = 'none'; }
     }
 
     // Entry point (Play button, auto-start, player-mode change). WebRTC first, HLS as fallback.
@@ -763,10 +766,26 @@
     }
 
     // Low-latency playback via MediaMTX WebRTC (WHEP). ~0.3–0.8s vs HLS's several seconds.
+    function webRtcPageUrl() { return normalizeMediaInput(CFG.mediaWebRtcPageUrl); }
+
+    function playWebRTCPage() {
+        const video = document.getElementById('videoEl');
+        const frame = document.getElementById('webrtcFrame');
+        const status = document.getElementById('videoStatus');
+        const url = webRtcPageUrl();
+        if (!url || !frame) { status.innerText = 'WebRTC page is not configured. Use HLS.'; return; }
+        if (video) video.style.display = 'none';
+        frame.style.display = 'block';
+        frame.src = url;
+        status.innerText = 'LIVE video (WebRTC page)';
+    }
+
     async function playWebRTC() {
+        if (webRtcPageUrl()) { playWebRTCPage(); return; }
         const video = document.getElementById('videoEl');
         const status = document.getElementById('videoStatus');
         const auto = playerMode() === 'auto';
+        if (!whepUrl()) { status.innerText = 'WebRTC is not configured for this stream server. Use HLS.'; return; }
         status.innerText = 'Connecting (WebRTC)…';
         try {
             pc = new RTCPeerConnection();
@@ -806,6 +825,9 @@
         const video = document.getElementById('videoEl');
         const status = document.getElementById('videoStatus');
         const url = hlsUrl();
+        const frame = document.getElementById('webrtcFrame');
+        if (frame) { frame.removeAttribute('src'); frame.style.display = 'none'; }
+        video.style.display = 'block';
         if (hls) { hls.destroy(); hls = null; }
         if (window.Hls && window.Hls.isSupported()) {
             hls = new Hls({ liveSyncDurationCount: 2, lowLatencyMode: true });

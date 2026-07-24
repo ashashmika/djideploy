@@ -51,5 +51,6 @@ window.APP_CONFIG = {
   // Exact browser playback URLs from the VPS stream server. Set these to
   // the stream server output URL if it is not a MediaMTX-style path.
   mediaHlsUrl: "https://camera.djidock.idea8.cloud/dock-camera/index.m3u8",
-  mediaWhepUrl:""
+  mediaWhepUrl:"",
+  mediaWebRtcPageUrl:"https://camera.djidock.idea8.cloud/dock-camera/"
 };
