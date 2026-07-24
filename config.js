@@ -40,6 +40,11 @@ window.APP_CONFIG = {
   mqttPass:    "YebiwOH9",
   clientPrefix:"djidock",
 
+  // Static remote.html login gate. This is convenience only; use
+  // Cloudflare Access or a backend for real production security.
+  remoteLoginUser:"pilot",
+  remoteLoginPass:"1234",
+
   // ---- Live video (dashboard) ----------------------------------------------
   // Browser playback endpoint. This may be an HTTPS reverse-proxy path.
   mediaHost:   "https://camera.djidock.idea8.cloud/dock-camera",

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DJI M3M — Advanced Operations Dashboard</title>
+    <title>DJI M3M - Advanced Operations Dashboard</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -44,6 +44,11 @@
         .status-online { background: rgba(46,194,126,.16); color: var(--good); }
         .status-error { background: rgba(255,90,90,.16); color: var(--bad); }
         .status-connecting { background: rgba(255,176,46,.16); color: var(--warn); }
+        .fleetbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:12px 18px; margin-bottom:16px; }
+        .fleetbar label { font-size:12px; color:var(--muted); display:inline-flex; align-items:center; gap:6px; }
+        .fleetbar input, .fleetbar select { padding:7px; background:var(--panel-2); border:1px solid var(--border); color:var(--text); border-radius:6px; font-size:12px; }
+        .fleetbar .fleet-name { min-width:150px; }
+        .fleetbar .fleet-sn { width:150px; }
 
         /* ---- Layout ---- */
         .grid-main { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
@@ -92,8 +97,8 @@
         @media (max-width: 1100px) { .bottom-grid { grid-template-columns: 1fr; } }
         details.panel summary { cursor: pointer; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; list-style: none; }
         details.panel summary::-webkit-details-marker { display: none; }
-        details.panel summary::before { content: '▸ '; color: var(--accent); }
-        details.panel[open] summary::before { content: '▾ '; }
+        details.panel summary::before { content: "> "; color: var(--accent); }
+        details.panel[open] summary::before { content: "v "; }
         .log-box { height: 320px; overflow-y: auto; background: #0b0d10; padding: 10px; font-family: monospace; font-size: 12px; border-radius: 8px; white-space: pre-wrap; margin-top: 12px; }
         .diag-box { max-height: 320px; overflow-y: auto; background: #0b0d10; padding: 10px; font-family: monospace; font-size: 12px; border-radius: 8px; margin-top: 12px; }
         .diag-row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #181b20; }
@@ -105,142 +110,210 @@
         .diag-section { color: var(--accent); margin: 6px 0 2px; font-weight: bold; }
         .check { font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
         .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--panel); color: var(--text); }
+
+        /* ---- App shell override ---- */
+        body { padding: 0; }
+        .app-shell { min-height: 100vh; display: grid; grid-template-columns: 248px 1fr; background: var(--bg); }
+        .sidebar { background: #101217; border-right: 1px solid var(--border); padding: 18px 18px 18px 26px; display: flex; flex-direction: column; gap: 8px; position: sticky; top: 0; height: 100vh; }
+        .brand-block { display:flex; align-items:center; gap:10px; padding:4px 4px 16px; border-bottom:1px solid var(--border); margin-bottom:8px; }
+        .brand-dot { width:12px; height:12px; border-radius:50%; background:var(--accent); box-shadow:0 0 14px rgba(47,155,255,.75); }
+        .brand-title { font-weight:700; }
+        .brand-sub { color:var(--muted); font-size:11px; margin-top:2px; }
+        .nav-tab { width:100%; text-align:left; background:transparent; color:var(--muted); border:1px solid var(--border); border-left:3px solid transparent; border-radius:8px; padding:10px 14px; overflow:visible; }
+        .nav-tab.active { background:var(--panel-2); color:var(--text); border-color:var(--accent); border-left-color:var(--accent); }
+        .sidebar-foot { margin-top:auto; padding-top:12px; border-top:1px solid var(--border); }
+        .main-page { padding:16px; min-width:0; }
+        .command-bar { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:16px; }
+        .page-title { font-size:22px; font-weight:700; }
+        .page-subtitle { color:var(--muted); font-size:12px; margin-top:3px; }
+        .connect-toggle { min-width:132px; border-radius:999px; }
+        .connect-toggle.disconnected { background:var(--bad); color:white; }
+        .connect-toggle.connected { background:var(--good); color:white; }
+        .connect-toggle.connecting { background:var(--warn); color:#111; }
+        .tab-page { display:none; }
+        .tab-page.active { display:block; }
+        .hud-strip { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:10px; margin-bottom:14px; }
+        .hud-item { background:rgba(27,30,36,.96); border:1px solid var(--border); border-radius:8px; padding:8px 10px; min-height:62px; backdrop-filter:blur(6px); }
+        .hud-item span { display:block; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+        .hud-item b { display:block; margin-top:3px; font-size:20px; font-variant-numeric:tabular-nums; }
+        .hud-item b small, .hud-item small { color:var(--muted); font-size:12px; font-weight:500; }
+        .home-video-shell { display:block; }
+        .panel-title { font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:10px; font-weight:700; }
+        .full-map-panel #map { height: calc(100vh - 190px); min-height:520px; }
+        .video-panel { max-width:1280px; margin:0 auto; }
+        .video-panel .video-frame { aspect-ratio: 16 / 9; }
+        .compact-controls input { width:150px; }
+        .compact-controls #streamName { width:105px; }
+        .url-list { margin-top:8px; font-size:11px; color:var(--muted); }
+        .fleetbar.in-tab { margin:0 0 14px; padding:0; border:0; background:transparent; }
+        .fleet-list { border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+        .fleet-card { display:grid; grid-template-columns:1.2fr 1fr 1fr 1fr 150px; gap:10px; align-items:center; border-bottom:1px solid var(--border); background:var(--panel-2); padding:10px 12px; cursor:pointer; }
+        .fleet-card.active { background:rgba(47,155,255,.12); box-shadow:inset 3px 0 0 var(--accent); }
+        .fleet-card strong { display:block; margin:0; }
+        .fleet-card div { color:var(--muted); font-size:12px; line-height:1.4; font-family:monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .fleet-header { background:#161a20; cursor:default; }
+        .fleet-header strong { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+        .fleet-card .online { color:var(--good); font-family:inherit; }
+        .fleet-card .offline { color:var(--warn); font-family:inherit; }
+        .telemetry-grid { display:grid; grid-template-columns:minmax(0, 1fr) 360px; gap:16px; align-items:start; }
+        .telemetry-detail { max-width:none; }
+        .gimbal-panel { max-width:none; margin-top:0; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+        .gimbal-panel .panel-title { width:100%; margin-bottom:2px; }
+        .gimbal-panel .status-line { width:100%; }
+        @media (max-width: 1000px) { .app-shell { grid-template-columns:1fr; } .sidebar { position:static; height:auto; flex-direction:row; flex-wrap:wrap; } .sidebar-foot { margin-top:0; border-top:0; } .nav-tab { width:auto; } .hud-strip { position:static; grid-template-columns:repeat(2, minmax(0, 1fr)); } .fleet-card { grid-template-columns:1fr; } .telemetry-grid { grid-template-columns:1fr; } }
     </style>
 </head>
 <body>
-<div class="container">
-
-    <div class="topbar">
-        <h1><span class="dot">●</span> DJI Dashboard</h1>
-        <input type="text" id="brokerUrl" value="wss://mqtt.djidock.idea8.cloud:443/mqtt" style="width:260px">
-        <button class="btn-connect" onclick="connectMQTT()">Connect</button>
-        <button class="btn-disconnect btn-small" onclick="disconnectMQTT()">Disconnect</button>
-        <label class="check"><input type="checkbox" id="ackMode" checked> Act as cloud (ack handshakes)</label>
-        <div class="spacer"></div>
-        <div id="connectionStatus" class="status-badge">Offline</div>
-    </div>
-
-    <!-- Stat cards -->
-    <div class="stats-grid">
-        <div class="stat">
-            <div class="label">Drone Battery</div>
-            <div class="value" id="card-battery">--<small>%</small></div>
-            <div class="bar"><span id="bar-battery"></span></div>
-            <div class="sub" id="card-rc-battery">RC: --%</div>
-        </div>
-        <div class="stat">
-            <div class="label">Altitude (rel.)</div>
-            <div class="value" id="card-alt">--<small> m</small></div>
-            <div class="sub" id="card-alt-abs">abs: --</div>
-        </div>
-        <div class="stat">
-            <div class="label">Horizontal Speed</div>
-            <div class="value" id="card-hspeed">--<small> m/s</small></div>
-            <div class="sub" id="card-vspeed">vertical: -- m/s</div>
-        </div>
-        <div class="stat">
-            <div class="label">Distance from Home</div>
-            <div class="value" id="card-dist">--<small> m</small></div>
-            <div class="sub" id="card-heading">heading: --°</div>
-        </div>
-    </div>
-
-    <div class="grid-main">
-        <!-- Map -->
-        <div class="panel map-wrap">
-            <h3>Live Map <span class="pill" id="map-coords">no fix</span></h3>
-            <div class="map-overlay">
-                <div class="map-chip active" id="chip-follow" onclick="toggleFollow()">⊙ Follow</div>
-                <div class="map-chip" id="chip-trail" onclick="toggleTrail()">〰 Trail</div>
-                <div class="map-chip" onclick="recenter()">⌖ Center</div>
-                <div class="map-chip" id="chip-layer" onclick="toggleLayer()">🛰 Sat</div>
+<div class="app-shell">
+    <aside class="sidebar">
+        <div class="brand-block">
+            <div class="brand-dot"></div>
+            <div>
+                <div class="brand-title">DJI Dashboard</div>
+                <div class="brand-sub" id="fleetActiveHint">auto-detecting</div>
             </div>
-            <div id="map"></div>
+        </div>
+        <button class="nav-tab active" data-tab="home" onclick="showTab('home')">Home</button>
+        <button class="nav-tab" data-tab="drones" onclick="showTab('drones')">Drones</button>
+        <button class="nav-tab" data-tab="map" onclick="showTab('map')">Map</button>
+        <button class="nav-tab" data-tab="telemetry" onclick="showTab('telemetry')">Telemetry</button>
+        <button class="nav-tab" data-tab="diagnostics" onclick="showTab('diagnostics')">MQTT & Diagnostics</button>
+        <div class="sidebar-foot">
+            <label class="check"><input type="checkbox" id="ackMode" checked> Cloud ack</label>
+            <input type="text" id="brokerUrl" value="wss://mqtt.djidock.idea8.cloud:443/mqtt" hidden>
+        </div>
+    </aside>
+
+    <main class="main-page">
+        <header class="command-bar">
+            <div>
+                <div class="page-title" id="pageTitle">Home</div>
+                <div class="page-subtitle">Live aircraft view, stream, and command surface</div>
+            </div>
+            <button id="connectToggle" class="connect-toggle disconnected" onclick="toggleConnection()">Disconnected</button>
+            <div id="connectionStatus" class="status-badge" style="display:none">Offline</div>
+        </header>
+        <div class="hud-strip">
+            <div class="hud-item"><span>Drone Battery</span><b id="card-battery">--%</b></div>
+            <div class="hud-item"><span>Remote Battery</span><b id="card-rc-battery">--%</b></div>
+            <div class="hud-item"><span>Dock Battery</span><b id="card-dock-battery">--%</b></div>
+            <div class="hud-item"><span>GPS / RTK</span><b id="hud-gps">-- sats</b><small id="hud-rtk">RTK: --</small><small id="map-coords" style="display:none">no fix</small></div>
         </div>
 
-        <!-- Right column: telemetry + video -->
-        <div style="display:flex; flex-direction:column; gap:16px;">
-            <div class="panel" id="telemetry-panel">
-                <h3>Telemetry <span class="pill stream-stale" id="val-stream">no data</span></h3>
-                <div class="data-row"><span class="data-label">Gateway (RC) SN</span><span class="data-value" id="val-rc-sn">—</span></div>
-                <div class="data-row"><span class="data-label">Drone (M3M) SN</span><span class="data-value" id="val-drone-sn">—</span></div>
-                <div class="data-row"><span class="data-label">Latitude</span><span class="data-value" id="val-lat">—</span></div>
-                <div class="data-row"><span class="data-label">Longitude</span><span class="data-value" id="val-lon">—</span></div>
-                <div class="data-row"><span class="data-label">GPS</span><span class="data-value" id="val-gps">—</span></div>
-                <div class="data-row"><span class="data-label">RTK</span><span class="data-value" id="val-rtk">—</span></div>
-                <div class="data-row"><span class="data-label">Mode</span><span class="data-value" id="val-mode">—</span></div>
+        <section id="tab-home" class="tab-page active">
+            <div class="home-video-shell" id="homeGrid">
+                <div class="panel video-panel">
+                    <div class="panel-title">Live Video</div>
+                    <div class="video-frame"><video id="videoEl" controls autoplay muted playsinline></video><iframe id="webrtcFrame" title="WebRTC live video" allow="autoplay; fullscreen; camera; microphone" allowfullscreen style="display:none"></iframe></div>
+                    <div id="videoStatus" class="status-line">Idle - auto-starts on connect.</div>
+                    <div class="video-controls compact-controls">
+                        <label>Server <input type="text" id="mediaHost" value="https://camera.djidock.idea8.cloud/dock-camera" oninput="refreshUrls()" placeholder="host or full URL"></label>
+                        <label>Stream <input type="text" id="streamName" value="dock-camera" oninput="refreshUrls()"></label>
+                        <label>Quality
+                            <select id="qualitySelect">
+                                <option value="0">Adaptive</option>
+                                <option value="1">Smooth</option>
+                                <option value="2">Standard</option>
+                                <option value="3" selected>HD</option>
+                                <option value="4">Ultra HD</option>
+                            </select>
+                        </label>
+                        <label>Camera <select id="videoIdSelect"><option value="">(waiting...)</option></select></label>
+                        <label>Player
+                            <select id="playerMode" onchange="playVideo()">
+                                <option value="auto">Auto</option>
+                                <option value="webrtc" selected>WebRTC</option>
+                                <option value="hls">HLS</option>
+                            </select>
+                        </label>
+                        <button class="btn-connect btn-small" onclick="startLive()">Start</button>
+                        <button class="btn-disconnect btn-small" onclick="stopLive()">Stop</button>
+                        <button class="btn-small btn-play" onclick="playVideo()">Play</button>
+                    </div>
+                    <label class="check"><input type="checkbox" id="autoStream" checked> Auto-start video on connect</label>
+                    <div class="url-list">
+                        Push: <span class="url-hint" id="rtmpUrlText"></span><br>
+                        WebRTC: <span class="url-hint" id="whepUrlText"></span><br>
+                        HLS: <span class="url-hint" id="hlsUrlText"></span>
+                    </div>
+                </div>
             </div>
+        </section>
 
+        <section id="tab-drones" class="tab-page">
             <div class="panel">
-                <h3>Gimbal Control <span class="pill" id="gimbal-status">idle</span></h3>
-                <button class="btn-connect btn-small" style="width:100%;" onclick="requestControl()">① Request Control — then ACCEPT the popup on the RC</button>
-                <div style="display:flex; gap:10px; margin-top:8px;">
-                    <button class="btn-ghost" style="flex:1" onclick="gimbalPoint('down')">② ▼ Point Down</button>
-                    <button class="btn-ghost" style="flex:1" onclick="gimbalPoint('front')">② ▲ Point Forward</button>
+                <div class="panel-title">Drone Registry</div>
+                <div class="fleetbar in-tab">
+                    <label>Drone <select id="fleetSelect" onchange="selectFleetDrone(this.value)"><option value="">All / auto-detect</option></select></label>
+                    <label>Name <input class="fleet-name" type="text" id="fleetName" placeholder="Site drone name"></label>
+                    <label>Drone SN <input class="fleet-sn" type="text" id="fleetDroneSn" placeholder="Aircraft SN"></label>
+                    <label>Remote SN <input class="fleet-sn" type="text" id="fleetRemoteSn" placeholder="RC/Gateway SN"></label>
+                    <label>Dock SN <input class="fleet-sn" type="text" id="fleetDockSn" placeholder="Dock SN optional"></label>
+                    <button class="btn-small btn-connect" onclick="saveFleetDrone()">Save Drone</button>
+                    <button class="btn-small btn-ghost" onclick="removeFleetDrone()">Remove</button>
                 </div>
-                <div style="font-size:12px;color:var(--muted);margin-top:10px;">Current: pitch <b id="g-pitch" style="color:var(--text)">—</b>° · yaw <b id="g-yaw" style="color:var(--text)">—</b>° · payload <b id="g-pidx" style="color:var(--text)">—</b></div>
-                <div id="gimbal-msg" style="font-size:12px;color:var(--muted);margin-top:8px; line-height:1.5; min-height:16px;">Ready. Connect + drone online, then press a button.</div>
-                <div style="font-size:11px;color:var(--muted);margin-top:6px; line-height:1.5;">
-                    Experimental — cloud gimbal control needs DRC/payload authority and may conflict with the pilot on the sticks.
-                    Watch the <b>Raw MQTT Stream</b> for the <code>services_reply</code>: <code>result:0</code> = accepted.
-                </div>
+                <div id="fleetList" class="fleet-list"></div>
+            </div>
+        </section>
+
+        <section id="tab-map" class="tab-page">
+            <div class="panel map-wrap full-map-panel">
+                <div class="panel-title">Map View</div>
+                <div id="mapTabMount"><div class="map-overlay"><div class="map-chip active" id="chip-follow" onclick="toggleFollow()">Follow</div><div class="map-chip" id="chip-trail" onclick="toggleTrail()">Trail</div><div class="map-chip" onclick="recenter()">Center</div><div class="map-chip" id="chip-layer" onclick="toggleLayer()">Sat</div></div><div id="map"></div></div>
+            </div>
+        </section>
+
+        <section id="tab-telemetry" class="tab-page"><div class="telemetry-grid">
+            <div class="panel telemetry-detail">
+                <div class="panel-title">Telemetry Details</div>
+                <div class="data-row"><span class="data-label">Gateway (RC/Dock) SN</span><span class="data-value" id="val-rc-sn">-</span></div>
+                <div class="data-row"><span class="data-label">Drone SN</span><span class="data-value" id="val-drone-sn">-</span></div>
+                <div class="data-row"><span class="data-label">Dock SN</span><span class="data-value" id="val-dock-sn">-</span></div>
+                <div class="data-row"><span class="data-label">Latitude</span><span class="data-value" id="val-lat">-</span></div>
+                <div class="data-row"><span class="data-label">Longitude</span><span class="data-value" id="val-lon">-</span></div>
+                <div class="data-row"><span class="data-label">GPS</span><span class="data-value" id="val-gps">-</span></div>
+                <div class="data-row"><span class="data-label">RTK</span><span class="data-value" id="val-rtk">-</span></div>
+                <div class="data-row"><span class="data-label">Mode</span><span class="data-value" id="val-mode">-</span></div>
+                <div class="data-row"><span class="data-label">Altitude</span><span class="data-value" id="card-alt">--<small> m</small></span></div>
+                <div class="data-row"><span class="data-label">Absolute Altitude</span><span class="data-value" id="card-alt-abs">abs: --</span></div>
+                <div class="data-row"><span class="data-label">Horizontal Speed</span><span class="data-value" id="card-hspeed">--<small> m/s</small></span></div>
+                <div class="data-row"><span class="data-label">Vertical Speed</span><span class="data-value" id="card-vspeed">vertical: -- m/s</span></div>
+                <div class="data-row"><span class="data-label">Distance from Home</span><span class="data-value" id="card-dist">--<small> m</small></span></div>
+                <div class="data-row"><span class="data-label">Heading</span><span class="data-value" id="card-heading">heading: -- deg</span></div>
+                <div class="data-row"><span class="data-label">Gimbal Pitch</span><span class="data-value"><b id="g-pitch">-</b> deg</span></div>
+                <div class="data-row"><span class="data-label">Gimbal Yaw</span><span class="data-value"><b id="g-yaw">-</b> deg</span></div>
+                <div class="data-row"><span class="data-label">Payload Index</span><span class="data-value" id="g-pidx">-</span></div>
             </div>
 
-            <div class="panel">
-                <h3>Live Video</h3>
-                <div class="video-frame"><video id="videoEl" controls autoplay muted playsinline></video><iframe id="webrtcFrame" title="WebRTC live video" allow="autoplay; fullscreen; camera; microphone" allowfullscreen style="display:none"></iframe></div>
-                <div id="videoStatus" style="font-size:12px;color:var(--muted);margin:8px 0;">Idle — auto-starts on connect.</div>
-                <div class="video-controls">
-                    <label>Server <input type="text" id="mediaHost" value="https://camera.djidock.idea8.cloud/dock-camera" style="width:220px" oninput="refreshUrls()" placeholder="host or full URL"></label>
-                    <label>Stream <input type="text" id="streamName" value="dock-camera" style="width:74px" oninput="refreshUrls()"></label>
-                    <label>Quality
-                        <select id="qualitySelect">
-                            <option value="0">Adaptive</option>
-                            <option value="1">Smooth</option>
-                            <option value="2">Standard</option>
-                            <option value="3" selected>HD</option>
-                            <option value="4">Ultra HD</option>
-                        </select>
-                    </label>
-                    <label>Camera <select id="videoIdSelect"><option value="">(waiting…)</option></select></label>
-                    <label>Player
-                        <select id="playerMode" onchange="playVideo()">
-                            <option value="auto">Auto (WebRTC to HLS)</option>
-                            <option value="webrtc">WebRTC (low latency)</option>
-                            <option value="hls" selected>HLS</option>
-                        </select>
-                    </label>
-                    <button class="btn-connect btn-small" onclick="startLive()">Start</button>
-                    <button class="btn-disconnect btn-small" onclick="stopLive()">Stop</button>
-                    <button class="btn-small btn-play" onclick="playVideo()">Play ▶</button>
+            <div class="panel gimbal-panel">
+                <div class="panel-title">Gimbal Control <span class="pill" id="gimbal-status">idle</span></div>
+                <button class="btn-connect btn-small" onclick="requestControl()">Request Control</button>
+                <button class="btn-ghost btn-small" onclick="gimbalPoint('down')">Point Down</button>
+                <button class="btn-ghost btn-small" onclick="gimbalPoint('front')">Point Forward</button>
+                <div id="gimbal-msg" class="status-line">Ready. Connect + drone online, then press a button.</div>
+            </div>
+        </div></section>
+
+        <section id="tab-diagnostics" class="tab-page">
+            <div class="bottom-grid">
+                <div class="panel">
+                    <div class="panel-title">Raw MQTT Stream</div>
+                    <div id="messageLog" class="log-box">Waiting for connection...</div>
                 </div>
-                <label class="check" style="margin-top:8px;"><input type="checkbox" id="autoStream" checked> Auto-start video on connect</label>
-                <div style="margin-top:8px; font-size:11px; color:var(--muted);">
-                    Push: <span class="url-hint" id="rtmpUrlText"></span><br>
-                    WebRTC: <span class="url-hint" id="whepUrlText"></span><br>
-                    HLS: <span class="url-hint" id="hlsUrlText"></span>
+                <div class="panel">
+                    <div class="panel-title">Diagnostics</div>
+                    <div id="topicStats" class="diag-box">No topics yet.</div>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <div class="bottom-grid">
-        <details class="panel">
-            <summary>Raw MQTT Stream</summary>
-            <div id="messageLog" class="log-box">Waiting for connection...</div>
-        </details>
-        <details class="panel">
-            <summary>Diagnostics</summary>
-            <div id="topicStats" class="diag-box">No topics yet.</div>
-        </details>
-    </div>
+        </section>
+    </main>
 </div>
-
 <script>
     const CFG = window.APP_CONFIG || {};   // credentials/settings from config.js
     let client;
     let rcSn = null;
     let droneSn = null;
+    let dockSn = null;
 
     const topicCounts = {};
     const fieldRank = {};
@@ -248,7 +321,6 @@
     let replyCount = 0;
     let lastOsdTime = 0;
     let freshTimer = null;
-    const STALE_AFTER_MS = 5000;
 
     // ---- Raw MQTT session recording (written to a .json file on disconnect) ----
     let sessionStart = null;      // Date when this connection started
@@ -256,10 +328,120 @@
     let manualDisconnect = false; // true when the user has intentionally disconnected
     const RAW_LOG_CAP = 500000;   // safety cap on messages held in memory
 
+    const TAB_TITLES = { home: 'Home', drones: 'Drones', map: 'Map', telemetry: 'Telemetry', diagnostics: 'MQTT & Diagnostics' };
+    function showTab(name) {
+        document.querySelectorAll('.tab-page').forEach(function (el) { el.classList.toggle('active', el.id === 'tab-' + name); });
+        document.querySelectorAll('.nav-tab').forEach(function (el) { el.classList.toggle('active', el.dataset.tab === name); });
+        setText('pageTitle', TAB_TITLES[name] || 'Home');
+        if (name === 'map' && !map) initMap();
+        if (name === 'map') setTimeout(function () { if (map) { map.invalidateSize(); updateMap(); } }, 120);
+        if (name === 'drones') renderFleetList();
+    }
+    function updateConnectToggle(text, cls) {
+        const btn = document.getElementById('connectToggle');
+        if (!btn) return;
+        const online = text === 'Connected';
+        const connecting = cls === 'status-connecting';
+        btn.className = 'connect-toggle ' + (online ? 'connected' : connecting ? 'connecting' : 'disconnected');
+        btn.innerText = online ? 'Connected' : connecting ? 'Connecting...' : 'Disconnected';
+    }
+    function toggleConnection() {
+        if (client && client.connected) disconnectMQTT();
+        else connectMQTT();
+    }
+
+    // ---- Fleet registry (stored locally in this browser) ----
+    const FLEET_KEY = 'dji_dashboard_fleet_v1';
+    const FLEET_SELECTED_KEY = 'dji_dashboard_selected_fleet_v1';
+    let fleetProfiles = [];
+    let selectedFleetId = '';
+    function profileId() { return 'fleet_' + Date.now().toString(36) + '_' + Math.random().toString(16).slice(2, 8); }
+    function cleanSn(v) { return (v || '').trim(); }
+    function selectedFleet() { return fleetProfiles.find(function (p) { return p.id === selectedFleetId; }) || null; }
+    function activeGatewaySn() { const p = selectedFleet(); return p ? (p.remoteSn || p.dockSn || rcSn) : rcSn; }
+    function activeDroneSn() { const p = selectedFleet(); return p ? (p.droneSn || droneSn) : droneSn; }
+    function activeDockSn() { const p = selectedFleet(); return p ? (p.dockSn || dockSn) : dockSn; }
+    function topicMatchesSelected(topic) {
+        const p = selectedFleet();
+        if (!p) return true;
+        const parts = topic.split('/');
+        const sn = parts.length >= 3 ? parts[2] : '';
+        return !sn || sn === p.droneSn || sn === p.remoteSn || sn === p.dockSn;
+    }
+    function loadFleetProfiles() {
+        try { fleetProfiles = JSON.parse(localStorage.getItem(FLEET_KEY) || '[]'); } catch (e) { fleetProfiles = []; }
+        if (!Array.isArray(fleetProfiles)) fleetProfiles = [];
+        fleetProfiles = fleetProfiles.filter(function (p) { return p && typeof p === 'object'; }).map(function (p) {
+            p.id = p.id || profileId();
+            p.name = p.name || '';
+            p.droneSn = p.droneSn || '';
+            p.remoteSn = p.remoteSn || '';
+            p.dockSn = p.dockSn || '';
+            return p;
+        });
+        try { selectedFleetId = localStorage.getItem(FLEET_SELECTED_KEY) || ''; } catch (e) { selectedFleetId = ''; }
+        if (selectedFleetId && !fleetProfiles.some(function (p) { return p.id === selectedFleetId; })) selectedFleetId = '';
+    }
+    function persistFleetProfiles() {
+        try { localStorage.setItem(FLEET_KEY, JSON.stringify(fleetProfiles)); localStorage.setItem(FLEET_SELECTED_KEY, selectedFleetId || ''); } catch (e) {}
+    }
+    function renderFleetList() {
+        const box = document.getElementById('fleetList');
+        if (!box) return;
+        box.innerHTML = '';
+        if (!fleetProfiles.length) { const empty = document.createElement('div'); empty.className = 'status-line'; empty.innerText = 'No drones saved yet.'; box.appendChild(empty); return; }
+        const header = document.createElement('div');
+        header.className = 'fleet-card fleet-header';
+        ['Name', 'Drone SN', 'Remote SN', 'Dock SN', 'Status'].forEach(function (label) { const cell = document.createElement('strong'); cell.innerText = label; header.appendChild(cell); });
+        box.appendChild(header);
+        fleetProfiles.forEach(function (p) {
+            const row = document.createElement('div');
+            row.className = 'fleet-card' + (p.id === selectedFleetId ? ' active' : '');
+            row.onclick = function () { selectFleetDrone(p.id); };
+            const online = Boolean(p.id === selectedFleetId && lastOsdTime && (Date.now() - lastOsdTime) <= STALE_AFTER_MS);
+            const cells = [p.name || 'Unnamed drone', p.droneSn || '-', p.remoteSn || '-', p.dockSn || '-', online ? 'online' : 'offline/unknown'];
+            cells.forEach(function (value, index) { const cell = document.createElement(index === 0 ? 'strong' : 'div'); cell.innerText = value; if (index === 4) cell.className = online ? 'online' : 'offline'; row.appendChild(cell); });
+            box.appendChild(row);
+        });
+    }
+
+    function renderFleetProfiles() {
+        const sel = document.getElementById('fleetSelect');
+        if (!sel) return;
+        sel.innerHTML = '<option value="">All / auto-detect</option>';
+        fleetProfiles.forEach(function (p) { const opt = document.createElement('option'); opt.value = p.id; opt.text = p.name || p.droneSn || p.remoteSn || 'Unnamed drone'; sel.appendChild(opt); });
+        sel.value = selectedFleetId || '';
+        fillFleetForm();
+        renderFleetList();
+    }
+    function fillFleetForm() {
+        const p = selectedFleet();
+        setText('fleetActiveHint', p ? ('selected: ' + (p.name || p.droneSn || p.remoteSn)) : 'auto-detecting');
+        const setVal = function (id, value) { const el = document.getElementById(id); if (el) el.value = value || ''; };
+        setVal('fleetName', p && p.name); setVal('fleetDroneSn', p && p.droneSn); setVal('fleetRemoteSn', p && p.remoteSn); setVal('fleetDockSn', p && p.dockSn);
+    }
+    function selectFleetDrone(id) {
+        selectedFleetId = id || ''; persistFleetProfiles(); resetTelemetry(); fillFleetForm();
+        const p = selectedFleet();
+        if (p) { rcSn = p.remoteSn || p.dockSn || null; droneSn = p.droneSn || null; dockSn = p.dockSn || null; setText('val-rc-sn', rcSn || '-'); setText('val-drone-sn', droneSn || '-'); setText('val-dock-sn', dockSn || '-'); }
+        renderFleetProfiles();
+    }
+    function saveFleetDrone() {
+        const p = { id: selectedFleetId || profileId(), name: cleanSn(document.getElementById('fleetName').value), droneSn: cleanSn(document.getElementById('fleetDroneSn').value), remoteSn: cleanSn(document.getElementById('fleetRemoteSn').value), dockSn: cleanSn(document.getElementById('fleetDockSn').value) };
+        if (!p.name || (!p.droneSn && !p.remoteSn && !p.dockSn)) { alert('Enter a name and at least one SN.'); return; }
+        const i = fleetProfiles.findIndex(function (x) { return x.id === p.id; });
+        if (i >= 0) fleetProfiles[i] = p; else fleetProfiles.push(p);
+        selectedFleetId = p.id; persistFleetProfiles(); renderFleetProfiles(); selectFleetDrone(p.id);
+    }
+    function removeFleetDrone() {
+        if (!selectedFleetId) return;
+        fleetProfiles = fleetProfiles.filter(function (p) { return p.id !== selectedFleetId; }); selectedFleetId = ''; persistFleetProfiles(); renderFleetProfiles(); selectFleetDrone('');
+    }
+
     // Live numeric state used by the map + cards (latest known value).
     const state = {
         lat: null, lon: null, alt: null, altAbs: null,
-        battery: null, rcBattery: null, hspeed: null, vspeed: null, heading: null,
+        battery: null, rcBattery: null, dockBattery: null, hspeed: null, vspeed: null, heading: null,
         homeLat: null, homeLon: null, mode: null
     };
 
@@ -346,7 +528,7 @@
         }
 
         // Drone SN: the thing/product OSD serial that is NOT the gateway. Two devices publish
-        // OSD — the RC on its own SN and the aircraft on its SN — so the aircraft is simply the
+        // OSD from the RC uses its own SN, while the aircraft publishes on the aircraft SN.
         // one that differs from the gateway. Guarding on `sn !== rcSn` guarantees the two boxes
         // never show the same serial.
         if (!droneSn && rcSn && sn !== rcSn
@@ -404,8 +586,9 @@
         if (alt !== undefined) { state.alt = alt; gotData = true; }
         if (altAbs !== undefined) { state.altAbs = altAbs; gotData = true; }
         if (bat !== undefined) {
-            // Route battery by which device published this OSD: RC topic → RC battery, else drone.
-            if (rcSn && currentSn === rcSn) state.rcBattery = bat;
+            const dsn = activeDockSn();
+            if (dsn && currentSn === dsn) state.dockBattery = bat;
+            else if (rcSn && currentSn === rcSn) state.rcBattery = bat;
             else state.battery = bat;
             gotData = true;
         }
@@ -426,12 +609,12 @@
             const isFixed = ps.is_fixed;
             if (gpsNum !== undefined) {
                 let g = gpsNum + ' sats';
-                if (gpsQual !== undefined) g += ' · signal ' + gpsQual + '/5';
+                if (gpsQual !== undefined) g += ' - signal ' + gpsQual + '/5';
                 setRanked('val-gps', g, rank, topic); gotGnss = true;
             }
             if (rtkNum !== undefined || isFixed !== undefined) {
                 let r = rtkFixLabel(isFixed);
-                if (rtkNum !== undefined) r += ' · ' + rtkNum + ' sats';
+                if (rtkNum !== undefined) r += ' - ' + rtkNum + ' sats';
                 setRanked('val-rtk', r, rank, topic); gotGnss = true;
             }
         }
@@ -441,7 +624,7 @@
         const gyaw = num(deepFind(payload, ['gimbal_yaw']));
         const pidx = deepFind(payload, ['payload_index']);
         if (typeof pidx === 'string') { gimbalPayloadIndex = pidx; setText('g-pidx', pidx); }
-        if (gpitch !== undefined) setText('g-pitch', gpitch.toFixed(0));
+        setText('g-pitch', '-'); setText('g-yaw', '-'); setText('g-pidx', '-');
         if (gyaw !== undefined) setText('g-yaw', gyaw.toFixed(0));
 
         if (gotData || gotGnss) {
@@ -460,12 +643,12 @@
     }
     function updateCards() {
         if (state.battery != null) {
-            document.getElementById('card-battery').innerHTML = Math.round(state.battery) + '<small>%</small>';
-            const bar = document.getElementById('bar-battery');
-            bar.style.width = Math.max(0, Math.min(100, state.battery)) + '%';
-            bar.style.background = batteryColor(state.battery);
+            setText('card-battery', Math.round(state.battery) + '%');
         }
-        setText('card-rc-battery', 'RC: ' + (state.rcBattery != null ? Math.round(state.rcBattery) + '%' : '--%'));
+        setText('card-rc-battery', state.rcBattery != null ? Math.round(state.rcBattery) + '%' : '--%');
+        setText('card-dock-battery', state.dockBattery != null ? Math.round(state.dockBattery) + '%' : '--%');
+        setText('hud-gps', document.getElementById('val-gps') ? document.getElementById('val-gps').innerText : '-- sats');
+        setText('hud-rtk', 'RTK: ' + (document.getElementById('val-rtk') ? document.getElementById('val-rtk').innerText : '--'));
         if (state.alt != null) document.getElementById('card-alt').innerHTML = state.alt.toFixed(1) + '<small> m</small>';
         setText('card-alt-abs', 'abs: ' + (state.altAbs != null ? state.altAbs.toFixed(1) + ' m' : '--'));
         if (state.hspeed != null) document.getElementById('card-hspeed').innerHTML = state.hspeed.toFixed(1) + '<small> m/s</small>';
@@ -477,7 +660,7 @@
             dist = haversine(state.homeLat, state.homeLon, state.lat, state.lon);
         }
         document.getElementById('card-dist').innerHTML = (dist != null ? Math.round(dist) : '--') + '<small> m</small>';
-        setText('card-heading', 'heading: ' + (state.heading != null ? Math.round(state.heading) + '°' : '--'));
+        setText('card-heading', 'heading: ' + (state.heading != null ? Math.round(state.heading) + ' deg' : '-- deg'));
     }
 
     // ---- Leaflet map ----
@@ -500,7 +683,7 @@
     function droneDivIcon(heading) {
         return L.divIcon({
             className: '',
-            html: `<div class="drone-icon" style="transform:rotate(${heading || 0}deg)">🛩️</div>`,
+            html: `<div class="drone-icon" style="transform:rotate(${heading || 0}deg)">A</div>`,
             iconSize: [26, 26], iconAnchor: [13, 13]
         });
     }
@@ -517,13 +700,13 @@
             droneMarker.setLatLng(pos);
             droneMarker.setIcon(droneDivIcon(state.heading));
         }
-        droneMarker.bindPopup(`Alt ${state.alt != null ? state.alt.toFixed(1) : '--'} m · ${state.hspeed != null ? state.hspeed.toFixed(1) : '--'} m/s`);
+        droneMarker.bindPopup(`Alt ${state.alt != null ? state.alt.toFixed(1) : '--'} m - ${state.hspeed != null ? state.hspeed.toFixed(1) : '--'} m/s`);
 
         // Home marker.
         if (state.homeLat != null && state.homeLon != null) {
             const home = [state.homeLat, state.homeLon];
             if (!homeMarker) {
-                homeMarker = L.marker(home, { icon: L.divIcon({ className: '', html: '<div style="font-size:20px">🏠</div>', iconSize: [20,20], iconAnchor: [10,10] }) }).addTo(map);
+                homeMarker = L.marker(home, { icon: L.divIcon({ className: '', html: '<div style="font-size:20px">H</div>', iconSize: [20,20], iconAnchor: [10,10] }) }).addTo(map);
                 homeMarker.bindPopup('Home / Takeoff');
             } else {
                 homeMarker.setLatLng(home);
@@ -566,17 +749,18 @@
     }
     function updateFreshness() {
         const el = document.getElementById('val-stream');
-        if (!lastOsdTime) { el.innerText = 'no data'; el.className = 'pill stream-stale'; return; }
+        if (!el || !lastOsdTime) return;
         const ageMs = Date.now() - lastOsdTime;
-        if (ageMs > STALE_AFTER_MS) { el.innerText = 'STALE · ' + formatAge(ageMs); el.className = 'pill stream-stale'; }
-        else { el.innerText = 'LIVE · ' + formatAge(ageMs); el.className = 'pill stream-live'; }
+        if (ageMs > STALE_AFTER_MS) { el.innerText = 'STALE - ' + formatAge(ageMs); el.className = 'pill stream-stale'; }
+        else { el.innerText = 'LIVE - ' + formatAge(ageMs); el.className = 'pill stream-live'; }
         persistState();
+        renderFleetList();
     }
 
     // ---- Persistence ----
     const STORAGE_KEY = 'm3m_dashboard_state_v2';
     function persistState() {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ rcSn, droneSn, state, lastOsdTime })); } catch (e) {}
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ rcSn, droneSn, dockSn, state, lastOsdTime })); } catch (e) {}
     }
     function restoreState() {
         try {
@@ -585,6 +769,7 @@
             const s = JSON.parse(raw);
             if (s.rcSn) { rcSn = s.rcSn; setText('val-rc-sn', s.rcSn); }
             if (s.droneSn) { droneSn = s.droneSn; setText('val-drone-sn', s.droneSn); }
+            if (s.dockSn) { dockSn = s.dockSn; setText('val-dock-sn', s.dockSn); }
             if (s.state) { Object.assign(state, s.state); updateCards(); }
             if (s.lastOsdTime) { lastOsdTime = s.lastOsdTime; }
             if (state.lat != null) setText('val-lat', state.lat.toFixed(6));
@@ -704,8 +889,8 @@
     }
     function publishService(method, data, targetSn) {
         if (!client || !client.connected) { alert('Connect to the broker first.'); return; }
-        const sn = targetSn || rcSn;
-        if (!sn) { alert('No SN yet — wait for the drone to connect.'); return; }
+        const sn = targetSn || activeGatewaySn();
+        if (!sn) { alert('No SN yet - wait for the drone to connect.'); return; }
         const msg = { tid: uuid(), bid: uuid(), timestamp: Date.now(), method: method, data: data };
         const topic = 'thing/product/' + sn + '/services';
         client.publish(topic, JSON.stringify(msg), { qos: 1 });
@@ -716,8 +901,9 @@
         const sel = document.getElementById('videoIdSelect').value;
         if (sel) return sel;
         // No dropdown pick yet: build from the camera the OSD actually reports (e.g. 99-0-0),
-        // NOT a guessed 0-0-0 — the dock silently ignores a video_id for a camera it doesn't have.
-        if (droneSn) return droneSn + '/' + (gimbalPayloadIndex || '0-0-0') + '/normal-0';
+        // NOT a guessed 0-0-0; the dock silently ignores a video_id for a camera it does not have.
+        const selectedDrone = activeDroneSn();
+            found[sn + '/' + pidx + '/normal-0'] = 'normal - ' + pidx;
         return '';
     }
     function startLive() {
@@ -765,7 +951,7 @@
         });
     }
 
-    // Low-latency playback via MediaMTX WebRTC (WHEP). ~0.3–0.8s vs HLS's several seconds.
+    // Low-latency playback via MediaMTX WebRTC (WHEP). Around 0.3-0.8s vs HLS taking several seconds.
     function webRtcPageUrl() { return normalizeMediaInput(CFG.mediaWebRtcPageUrl); }
 
     function playWebRTCPage() {
@@ -777,7 +963,7 @@
         if (video) video.style.display = 'none';
         frame.style.display = 'block';
         frame.src = url;
-        status.innerText = 'LIVE video (WebRTC page)';
+                status.innerText = 'LIVE video (WebRTC - low latency)';
     }
 
     async function playWebRTC() {
@@ -786,7 +972,7 @@
         const status = document.getElementById('videoStatus');
         const auto = playerMode() === 'auto';
         if (!whepUrl()) { status.innerText = 'WebRTC is not configured for this stream server. Use HLS.'; return; }
-        status.innerText = 'Connecting (WebRTC)…';
+        status.innerText = 'Connecting (WebRTC)...';
         try {
             pc = new RTCPeerConnection();
             const mine = pc;   // guard against a stale async continuation after stopPlayers()
@@ -795,14 +981,14 @@
             pc.ontrack = function (e) {
                 if (pc !== mine) return;
                 video.srcObject = e.streams[0];
-                status.innerText = 'LIVE video (WebRTC · low latency)';
+                status.innerText = 'LIVE video (WebRTC - low latency)';
                 video.play().catch(function () {});
             };
             pc.onconnectionstatechange = function () {
                 if (pc !== mine || !pc) return;
                 if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-                    if (auto) { status.innerText = 'WebRTC dropped — switching to HLS…'; stopPlayers(); playHls(); }
-                    else { status.innerText = 'WebRTC ' + pc.connectionState + ' — retrying…'; setTimeout(function () { if (playerMode() !== 'hls') playVideo(); }, 3000); }
+                    if (auto) { status.innerText = 'WebRTC dropped - switching to HLS...'; stopPlayers(); playHls(); }
+                    else { status.innerText = 'WebRTC ' + pc.connectionState + ' - retrying...'; setTimeout(function () { if (playerMode() !== 'hls') playVideo(); }, 3000); }
                 }
             };
             const offer = await pc.createOffer();
@@ -815,11 +1001,10 @@
             if (pc !== mine) return;
             await pc.setRemoteDescription({ type: 'answer', sdp: answer });
         } catch (err) {
-            if (auto) { status.innerText = 'WebRTC unavailable — using HLS…'; stopPlayers(); playHls(); }
+            if (auto) { status.innerText = 'WebRTC unavailable - using HLS...'; stopPlayers(); playHls(); }
             else { status.innerText = 'WebRTC error: ' + err.message + ' (retrying)'; setTimeout(function () { if (playerMode() !== 'hls') playVideo(); }, 3000); }
         }
     }
-
     // Fallback / selectable: HLS via hls.js (higher latency, very compatible).
     function playHls() {
         const video = document.getElementById('videoEl');
@@ -843,7 +1028,7 @@
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = url; video.play().catch(function () {});
         } else { status.innerText = 'This browser cannot play HLS.'; return; }
-        status.innerText = 'Loading video…';
+        status.innerText = 'Loading video...';
     }
     function autoMaybeStart() {
         const auto = document.getElementById('autoStream');
@@ -882,10 +1067,9 @@
             sel.appendChild(opt);
         }
         if (prev && found[prev]) sel.value = prev;
-        document.getElementById('videoStatus').innerText = statusText || 'Camera(s) detected — ready to Start Live.';
+        document.getElementById('videoStatus').innerText = statusText || 'Camera(s) detected - ready to Start Live.';
         autoMaybeStart();
     }
-
     // Authoritative source: the device's live_capacity report (arrives on state change).
     function captureLiveCapacity(payload) {
         const cap = deepFind(payload, ['live_capacity']);
@@ -895,13 +1079,13 @@
             for (const cam of (dev.camera_list || [])) {
                 for (const vid of (cam.video_list || [])) {
                     const id = dev.sn + '/' + cam.camera_index + '/' + vid.video_index;
-                    found[id] = (vid.video_type || 'video') + ' · cam ' + cam.camera_index;
+                    found[id] = (vid.video_type || 'video') + ' - cam ' + cam.camera_index;
                 }
             }
         }
         if (Object.keys(found).length === 0) return;
         liveCapReported = true;   // once we have this, ignore OSD-derived guesses
-        setCameraOptions(found);
+        setCameraOptions(found, 'Camera(s) from OSD - ready to Start Live.');
     }
 
     // Fallback: derive streamable cameras from the OSD `cameras[]` array. The dock reports
@@ -918,13 +1102,13 @@
             const pidx = cam.payload_index;
             if (typeof pidx !== 'string') continue;
             // Offer a default fused stream, plus per-lens streams for whichever lenses the camera reports.
-            found[sn + '/' + pidx + '/normal-0'] = 'normal · ' + pidx;
+            found[sn + '/' + pidx + '/normal-0'] = 'normal - ' + pidx;
             const hasKey = (pfx) => Object.keys(cam).some(k => k.indexOf(pfx) === 0);
-            if (hasKey('wide_')) found[sn + '/' + pidx + '/wide-0'] = 'wide · ' + pidx;
-            if (hasKey('zoom_')) found[sn + '/' + pidx + '/zoom-0'] = 'zoom · ' + pidx;
-            if (hasKey('ir_')) found[sn + '/' + pidx + '/ir-0'] = 'IR/thermal · ' + pidx;
+            if (hasKey('wide_')) found[sn + '/' + pidx + '/wide-0'] = 'wide - ' + pidx;
+            if (hasKey('zoom_')) found[sn + '/' + pidx + '/zoom-0'] = 'zoom - ' + pidx;
+            if (hasKey('ir_')) found[sn + '/' + pidx + '/ir-0'] = 'IR/thermal - ' + pidx;
         }
-        setCameraOptions(found, 'Camera(s) from OSD — ready to Start Live.');
+        setCameraOptions(found, 'Camera(s) from OSD - ready to Start Live.');
     }
 
     // ---- Gimbal control (needs cloud-control authority; pilot accepts on the RC) ----
@@ -939,11 +1123,12 @@
     // Step 1: ask the aircraft for control authority. Reply comes back "in_progress" and the
     // RC shows a popup the pilot must accept; then a final reply grants it.
     function requestControl() {
-        if (!client || !client.connected) { gmsg('✗ Not connected to the broker.', 'var(--bad)'); return; }
-        if (!rcSn) { gmsg('✗ No RC/gateway SN yet.', 'var(--bad)'); return; }
-        publishService('cloud_control_auth_request', {}, rcSn);
-        setText('gimbal-status', 'requesting…');
-        gmsg('Authority requested → on the RC, go to Pilot 2\'s FLIGHT view (not the cloud page) and ACCEPT the control popup.', 'var(--warn)');
+        if (!client || !client.connected) { gmsg('Not connected to the broker.', 'var(--bad)'); return; }
+        const gatewaySn = activeGatewaySn();
+        if (!gatewaySn) { gmsg('No RC/gateway SN yet.', 'var(--bad)'); return; }
+        publishService('cloud_control_auth_request', {}, gatewaySn);
+        setText('gimbal-status', 'requesting...');
+        gmsg('Authority requested on the RC. Go to Pilot 2 flight view and accept the control popup.', 'var(--warn)');
     }
 
     // Route control replies to the visible gimbal panel (not just the collapsed log).
@@ -953,18 +1138,18 @@
         const status = data.output && data.output.status;
         if (payload.method === 'cloud_control_auth_request') {
             if (status === 'in_progress') {
-                gmsg('⏳ Waiting — on the RC, switch to Pilot 2\'s FLIGHT view and ACCEPT the control-request popup.', 'var(--warn)');
+                gmsg('Waiting - on the RC, switch to Pilot 2 flight view and accept the control-request popup.', 'var(--warn)');
                 setText('gimbal-status', 'accept on RC');
             } else if (data.result === 0) {
                 authGranted = true;
-                gmsg('✓ Control authority granted. Now press ▼ Point Down / ▲ Point Forward.', 'var(--good)');
+                gmsg('Control authority granted. Now press Point Down or Point Forward.', 'var(--good)');
                 setText('gimbal-status', 'control granted');
             } else {
-                gmsg('✗ Authority denied (result ' + data.result + ').', 'var(--bad)');
+                gmsg('Authority denied (result ' + data.result + ').', 'var(--bad)');
             }
         } else if (payload.method === 'gimbal_reset') {
-            if (data.result === 0) gmsg('✓ gimbal_reset accepted — watch the pitch value change.', 'var(--good)');
-            else gmsg('✗ gimbal_reset rejected (result ' + data.result + '). Paste me this reply.', 'var(--bad)');
+            if (data.result === 0) gmsg('gimbal_reset accepted - watch the pitch value change.', 'var(--good)');
+            else gmsg('gimbal_reset rejected (result ' + data.result + '). Paste me this reply.', 'var(--bad)');
         }
     }
 
@@ -979,17 +1164,17 @@
     // Step 2: send the gimbal command to the aircraft payload. Requires authority granted (step 1).
     function gimbalPoint(dir) {
         if (!client || !client.connected) {
-            gmsg('✗ Not connected to the broker. Click Connect (top bar) first.', 'var(--bad)');
+        if (!client || !client.connected) { gmsg('Not connected to the broker.', 'var(--bad)'); return; }
             setText('gimbal-status', 'not connected');
             return;
         }
-        if (!droneSn) {
-            gmsg('✗ No drone SN yet — the drone must be online (check Telemetry).', 'var(--bad)');
+        if (!activeDroneSn()) {
+            gmsg('No drone SN yet - the drone must be online (check Telemetry).', 'var(--bad)');
             setText('gimbal-status', 'no drone');
             return;
         }
         if (!authGranted) {
-            gmsg('⚠ Press ① Request Control first and ACCEPT the popup on the RC — sending anyway…', 'var(--warn)');
+            gmsg('Press Request Control first and accept the popup on the RC - sending anyway...', 'var(--warn)');
         }
 
         // reset_mode: 0 = recenter (forward/level), 1 = pitch straight down.
@@ -997,11 +1182,11 @@
         const pidx = payloadIndex();
         // DJI Cloud API: service commands go to the GATEWAY (RC) topic, not the aircraft's.
         // Only the RC is an MQTT client; the aircraft's payload is targeted via payload_index.
-        const gatewaySn = rcSn || droneSn;
+        const gatewaySn = activeGatewaySn() || activeDroneSn();
         publishService('gimbal_reset', { payload_index: pidx, reset_mode: resetMode }, gatewaySn);
-        setText('gimbal-status', dir === 'down' ? 'sent ▼' : 'sent ▲');
+        setText('gimbal-status', dir === 'down' ? 'sent down' : 'sent forward');
         gmsg('Sent gimbal_reset (' + (dir === 'down' ? 'down' : 'front') + ') to gateway ' + gatewaySn
-            + ', payload ' + pidx + ' — watch the pitch value + services_reply.', 'var(--text)');
+            + ', payload ' + pidx + ' - watch the pitch value + services_reply.', 'var(--text)');
     }
 
     function recordTopic(topic) { topicCounts[topic] = (topicCounts[topic] || 0) + 1; renderDiagnostics(); }
@@ -1012,12 +1197,12 @@
             ['RTK', 'val-rtk'], ['Mode', 'val-mode'],
         ];
         let html = '<div class="diag-section">Cloud handshake:</div>';
-        html += `<div class="diag-row"><span class="${replyCount > 0 ? 'field-ok' : 'field-missing'}">${replyCount > 0 ? '✓' : '✗'} Handshake acks sent</span><span class="diag-count">${replyCount}</span></div>`;
+        html += `<div class="diag-row"><span class="${replyCount > 0 ? 'field-ok' : 'field-missing'}">${replyCount > 0 ? 'OK' : 'Missing'} Handshake acks sent</span><span class="diag-count">${replyCount}</span></div>`;
         const camCount = Object.keys(liveVideoIds).length;
         html += '<div class="diag-section">Live video:</div>';
-        html += `<div class="diag-row"><span class="${camCount > 0 ? 'field-ok' : 'field-missing'}">${camCount > 0 ? '✓' : '✗'} Cameras (live_capacity)</span><span class="diag-count">${camCount}</span></div>`;
-        html += `<div class="diag-row"><span class="${liveCommandsSent > 0 ? 'field-ok' : 'field-missing'}">${liveCommandsSent > 0 ? '✓' : '✗'} live cmds sent</span><span class="diag-count">${liveCommandsSent}</span></div>`;
-        html += `<div class="diag-row"><span class="${lastServiceResult === 0 ? 'field-ok' : 'field-missing'}">Last service reply (0=ok)</span><span class="diag-count">${lastServiceResult === null ? '—' : lastServiceResult}</span></div>`;
+        html += `<div class="diag-row"><span class="${camCount > 0 ? 'field-ok' : 'field-missing'}">${camCount > 0 ? 'OK' : 'Missing'} Cameras (live_capacity)</span><span class="diag-count">${camCount}</span></div>`;
+        html += `<div class="diag-row"><span class="${liveCommandsSent > 0 ? 'field-ok' : 'field-missing'}">${liveCommandsSent > 0 ? 'OK' : 'Missing'} live cmds sent</span><span class="diag-count">${liveCommandsSent}</span></div>`;
+        html += `<div class="diag-row"><span class="${lastServiceResult === 0 ? 'field-ok' : 'field-missing'}">Last service reply (0=ok)</span><span class="diag-count">${lastServiceResult === null ? '-' : lastServiceResult}</span></div>`;
         html += '<div class="diag-section">Telemetry fields detected:</div>';
         for (const [label, id] of fields) {
             if (fieldSource[id]) html += `<div class="diag-row"><span class="field-ok">&#10003; ${label}</span><span class="diag-count">${redact(fieldSource[id])}</span></div>`;
@@ -1033,7 +1218,7 @@
         topicStats.innerHTML = html;
     }
 
-    function setStatus(text, cls) { statusBadge.innerText = text; statusBadge.className = 'status-badge' + (cls ? ' ' + cls : ''); }
+    function setStatus(text, cls) { statusBadge.innerText = text; statusBadge.className = 'status-badge' + (cls ? ' ' + cls : ''); updateConnectToggle(text, cls); }
 
     // ---- Session file saving ----
     function fmtStamp(d) {
@@ -1077,7 +1262,7 @@
                 logMessage('System', 'Saved json/' + fname + ' (' + rawLog.length + ' messages).');
                 return;
             }
-        } catch (e) { /* serve.py not running — fall back to a download */ }
+        } catch (e) { /* serve.py not running; fall back to a download */ }
 
         downloadBlob(content, fname);
         logMessage('System', 'Downloaded ' + fname + ' (' + rawLog.length + ' messages). Run serve.py to auto-save into json/.');
@@ -1086,7 +1271,7 @@
     function connectMQTT() {
         manualDisconnect = false;
         const url = document.getElementById('brokerUrl').value;
-        setStatus('Connecting…', 'status-connecting');
+        setStatus('Connecting...', 'status-connecting');
         const opts = { clientId: (CFG.clientPrefix || 'm3m') + '_dashboard_' + Math.random().toString(16).substr(2, 8) };
         // The cloud broker requires auth (it is NOT anonymous). Fall back to the backend
         // login if config.js doesn't override. For a local anonymous broker these are ignored.
@@ -1112,8 +1297,9 @@
             try { payload = JSON.parse(message.toString()); } catch (e) { isJson = false; }
             rawLog.push({ ts: new Date().toISOString(), topic: topic, payload: isJson ? payload : message.toString() });
             if (rawLog.length > RAW_LOG_CAP) rawLog.shift();
-            captureSNs(topic, isJson ? payload : null);   // learn SNs first so redaction masks them
-            if (isJson && topic.includes('sys/product/') && topic.includes('/status')) {
+            const selectedTopic = topicMatchesSelected(topic);
+            if (selectedTopic) captureSNs(topic, isJson ? payload : null);   // learn SNs first so redaction masks them
+            if (selectedTopic && isJson && topic.includes('sys/product/') && topic.includes('/status')) {
                 try { handleTopology(topic, payload); } catch (e) {}
             }
             recordTopic(topic);
@@ -1121,10 +1307,12 @@
             logMessage(topic, payload);
             try {
                 handleHandshake(topic, payload);
-                applyTelemetry(topic, payload);
-                captureLiveCapacity(payload);
-                captureCameras(payload);
-                handleControlReply(topic, payload);
+                if (selectedTopic) {
+                    applyTelemetry(topic, payload);
+                    captureLiveCapacity(payload);
+                    captureCameras(payload);
+                    handleControlReply(topic, payload);
+                }
                 if (topic.endsWith('/services_reply')) {
                     const r = deepFind(payload, ['result']);
                     if (r !== undefined) lastServiceResult = r;
@@ -1133,66 +1321,67 @@
         });
 
         client.on('error', (err) => { setStatus('Error', 'status-error'); logMessage('Connection Error', err.message); client.end(); });
-        client.on('reconnect', () => setStatus('Reconnecting…', 'status-connecting'));
+        client.on('reconnect', () => setStatus('Reconnecting...', 'status-connecting'));
         client.on('close', () => { if (statusBadge.innerText === 'Connected') setStatus('Offline'); });
     }
 
     // Clear all telemetry/map/state back to the empty startup look.
     function resetTelemetry() {
         Object.keys(state).forEach(function (k) { state[k] = null; });
-        rcSn = null; droneSn = null; lastOsdTime = 0;
+        rcSn = null; droneSn = null; dockSn = null; lastOsdTime = 0;
         authGranted = false; liveStartSent = false; liveCapReported = false; liveVideoIds = {};
         Object.keys(fieldRank).forEach(function (k) { delete fieldRank[k]; });
         Object.keys(fieldSource).forEach(function (k) { delete fieldSource[k]; });
 
-        ['val-rc-sn', 'val-drone-sn', 'val-lat', 'val-lon', 'val-gps', 'val-rtk', 'val-mode'].forEach(function (id) { setText(id, '—'); });
+        ['val-rc-sn', 'val-drone-sn', 'val-dock-sn', 'val-lat', 'val-lon', 'val-gps', 'val-rtk', 'val-mode'].forEach(function (id) { setText(id, '-'); });
         var sp = document.getElementById('val-stream');
         if (sp) { sp.innerText = 'no data'; sp.className = 'pill stream-stale'; }
 
-        document.getElementById('card-battery').innerHTML = '--<small>%</small>';
-        document.getElementById('bar-battery').style.width = '0%';
-        setText('card-rc-battery', 'RC: --%');
+        setText('card-battery', '--%');
+        setText('card-rc-battery', '--%');
+        setText('card-dock-battery', '--%');
+        setText('hud-gps', '-- sats');
+        setText('hud-rtk', 'RTK: --');
         document.getElementById('card-alt').innerHTML = '--<small> m</small>';
         setText('card-alt-abs', 'abs: --');
         document.getElementById('card-hspeed').innerHTML = '--<small> m/s</small>';
         setText('card-vspeed', 'vertical: -- m/s');
         document.getElementById('card-dist').innerHTML = '--<small> m</small>';
-        setText('card-heading', 'heading: --°');
+        setText('card-heading', 'heading: -- deg');
 
-        setText('g-pitch', '—'); setText('g-yaw', '—'); setText('g-pidx', '—');
+        setText('g-pitch', '-'); setText('g-yaw', '-'); setText('g-pidx', '-');
         setText('gimbal-status', 'idle');
 
         var mc = document.getElementById('map-coords'); if (mc) mc.innerText = 'no fix';
-        if (droneMarker) { map.removeLayer(droneMarker); droneMarker = null; }
-        if (homeMarker) { map.removeLayer(homeMarker); homeMarker = null; }
+        if (map && droneMarker) { map.removeLayer(droneMarker); droneMarker = null; }
+        if (map && homeMarker) { map.removeLayer(homeMarker); homeMarker = null; }
         trailPoints.length = 0; if (trailLine) trailLine.setLatLngs([]); centeredOnce = false;
-
-        try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}   // don't repaint stale data on refresh
     }
 
     async function disconnectMQTT() {
         manualDisconnect = true;
         if (freshTimer) { clearInterval(freshTimer); freshTimer = null; }
         stopPlayers();
-        // Close hard so MQTT.js does NOT auto-reconnect.
         if (client) {
-            try { client.options.reconnectPeriod = 0; } catch (e) {}
             try { client.end(true); } catch (e) {}
             client = null;
         }
         setStatus('Offline');
-        await saveSession();     // save after the socket is closed (log is in memory; POST is instant)
+        await saveSession();
         resetTelemetry();
-        logMessage('System', 'Disconnected by user — log saved, telemetry reset.');
+        logMessage('System', 'Disconnected by user - log saved, telemetry reset.');
     }
 
     // ---- Boot ----
     if (CFG.brokerWsUrl) document.getElementById('brokerUrl').value = CFG.brokerWsUrl;
     if (CFG.mediaHost) document.getElementById('mediaHost').value = CFG.mediaHost;
-    initMap();
+    loadFleetProfiles();
+    renderFleetProfiles();
     restoreState();
+    if (selectedFleetId) selectFleetDrone(selectedFleetId);
     refreshUrls();
     if (window.mqtt) connectMQTT();
 </script>
 </body>
 </html>
+

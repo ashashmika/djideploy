@@ -17,6 +17,9 @@
         .cfg b { color:#0f0; font-family:monospace; }
         .log { background:#000; height: 220px; overflow-y:auto; margin-top:14px; padding:10px; border-radius:4px; font-family:monospace; font-size:12px; white-space:pre-wrap; }
         .hint { font-size:12px; color:#888; line-height:1.5; }
+        .login-row { display:flex; flex-direction:column; gap:8px; margin:12px 0; }
+        input { padding: 12px; background:#151515; border:1px solid #444; color:#fff; border-radius:4px; font-size:15px; }
+        .error { color:#ff8a8a; font-size:13px; min-height:18px; }
         .pill { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; margin-left:6px; }
         .on { background:#107c10; } .off { background:#d13438; }
     </style>
@@ -24,7 +27,18 @@
 </head>
 <body>
 
-<div class="card">
+<div class="card" id="loginCard">
+    <h2>Remote Login</h2>
+    <p class="hint">Enter the access details before connecting this controller to the cloud bridge.</p>
+    <div class="login-row">
+        <input type="text" id="loginUser" placeholder="Username" autocomplete="username">
+        <input type="password" id="loginPass" placeholder="Password" autocomplete="current-password">
+    </div>
+    <div class="error" id="loginError"></div>
+    <button onclick="loginRemote()">Login</button>
+</div>
+
+<div class="card" id="bridgeApp" style="display:none;">
     <h2>Custom Cloud Bridge</h2>
     <p class="hint">Credentials are set in the <b>CONFIG</b> block inside this file's code — you don't type anything here. Open this page inside <b>DJI Pilot 2 &rarr; Cloud Services</b> and it will verify + connect automatically.</p>
 
@@ -81,9 +95,31 @@
         // on it). A non-UUID like "workspace-custom-001" throws IllegalArgumentException (615000)
         // and aborts onboarding. Keep this a valid UUID; override via config.js if you have one.
         workspaceId: _CFG.workspaceId || "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
-        autoConnect: true                   // verify + connect automatically once Pilot 2 loads this page
+        autoConnect: true,
+        loginUser:   _CFG.remoteLoginUser || "pilot",
+        loginPass:   _CFG.remoteLoginPass || "1234"
     };
     /* ================================================================ */
+
+    function isLoggedIn() {
+        try { return sessionStorage.getItem('remote_login_ok') === '1'; } catch (e) { return false; }
+    }
+    function showBridgeApp() {
+        document.getElementById('loginCard').style.display = 'none';
+        document.getElementById('bridgeApp').style.display = 'block';
+    }
+    function loginRemote() {
+        const user = (document.getElementById('loginUser').value || '').trim();
+        const pass = document.getElementById('loginPass').value || '';
+        const err = document.getElementById('loginError');
+        if (user === CONFIG.loginUser && pass === CONFIG.loginPass) {
+            try { sessionStorage.setItem('remote_login_ok', '1'); } catch (e) {}
+            showBridgeApp();
+            startRemoteBridgePage();
+        } else {
+            err.innerText = 'Invalid username or password.';
+        }
+    }
 
     let monitorTimer = null;
 
@@ -369,12 +405,16 @@
         setStatus('JSBridge not found — open this page inside DJI Pilot 2 (see note above).', '#f55');
     }
 
-    window.addEventListener('load', function () {
+    function startRemoteBridgePage() {
         renderConfigSummary();
         restorePrevLog();     // show prior session + flag if Pilot 2 reloaded us
         wireLifecycle();      // log suspend/destroy events + connection state on background
         log('Page loaded at ' + new Date().toLocaleTimeString() + '. Tap "List Bridge API" to see what this Pilot 2 build exposes.', '#0ff');
         checkBridgePresence();
+    }
+
+    window.addEventListener('load', function () {
+        if (isLoggedIn()) { showBridgeApp(); startRemoteBridgePage(); }
     });
 </script>
 
