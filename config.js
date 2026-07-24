@@ -46,5 +46,10 @@ window.APP_CONFIG = {
 
   // RTMP ingest URL sent to DJI live_start_push. Keep this as the actual RTMP
   // endpoint the RC/drone can reach; do not derive it from the playback URL.
-  mediaPushUrl:"rtmp://camera.djidock.idea8.cloud:1935/live/m3m"
+  mediaPushUrl:"rtmp://camera.djidock.idea8.cloud:1935/dock-camera",
+
+  // Exact browser playback URLs from the VPS stream server. Set these to
+  // the stream server output URL if it is not a MediaMTX-style path.
+  mediaHlsUrl: "https://camera.djidock.idea8.cloud/dock-camera/index.m3u8",
+  mediaWhepUrl:"https://camera.djidock.idea8.cloud/dock-camera/"
 };
