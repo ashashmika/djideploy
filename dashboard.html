@@ -205,9 +205,9 @@
                     <label>Camera <select id="videoIdSelect"><option value="">(waiting…)</option></select></label>
                     <label>Player
                         <select id="playerMode" onchange="playVideo()">
-                            <option value="auto" selected>Auto (WebRTC→HLS)</option>
+                            <option value="auto">Auto (WebRTC to HLS)</option>
                             <option value="webrtc">WebRTC (low latency)</option>
-                            <option value="hls">HLS</option>
+                            <option value="hls" selected>HLS</option>
                         </select>
                     </label>
                     <button class="btn-connect btn-small" onclick="startLive()">Start</button>
@@ -669,6 +669,8 @@
         return 'rtmp://' + value + ':1935' + stream;
     }
     function hlsUrl() {
+        const configuredHls = normalizeMediaInput(CFG.mediaHlsUrl);
+        if (configuredHls) return configuredHls;
         const value = normalizeMediaInput(document.getElementById('mediaHost').value);
         if (!value) return '';
         const stream = streamPath();
@@ -681,6 +683,8 @@
         return 'http://' + value + ':8888' + stream + '/index.m3u8';
     }
     function whepUrl() {
+        const configuredWhep = normalizeMediaInput(CFG.mediaWhepUrl);
+        if (configuredWhep) return configuredWhep;
         const value = normalizeMediaInput(document.getElementById('mediaHost').value);
         if (!value) return '';
         const stream = streamPath();
@@ -811,7 +815,7 @@
             hls.on(window.Hls.Events.ERROR, function (e, d) {
                 if (!d.fatal) return;
                 if (d.type === window.Hls.ErrorTypes.MEDIA_ERROR) { hls.recoverMediaError(); }
-                else if (d.type === window.Hls.ErrorTypes.NETWORK_ERROR) { status.innerText = 'Waiting for stream… (retrying)'; setTimeout(function () { if (hls) hls.startLoad(); }, 3000); }
+                else if (d.type === window.Hls.ErrorTypes.NETWORK_ERROR) { const code = d.response && d.response.code ? ' HTTP ' + d.response.code : ''; status.innerText = 'HLS network error' + code + ' - check playlist/CORS/proxy: ' + url; setTimeout(function () { if (hls) hls.startLoad(); }, 3000); }
                 else { status.innerText = 'Video error: ' + d.details + ' (retrying)'; setTimeout(playHls, 3000); }
             });
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
