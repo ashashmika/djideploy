@@ -8,7 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="config.js?v=20260804-explicit-media"></script>
+    <script src="config.js?v=20260804-video-controls"></script>
     <style>
         :root {
             --bg: #14161a;
@@ -143,7 +143,6 @@
         .video-panel { max-width:1280px; margin:0 auto; }
         .video-panel .video-frame { aspect-ratio: 16 / 9; }
         .compact-controls input { width:150px; }
-        .compact-controls #streamName { width:105px; }
         .url-list { margin-top:8px; font-size:11px; color:var(--muted); }
         .fleetbar.in-tab { margin:0 0 14px; padding:0; border:0; background:transparent; }
         .fleet-list { border:1px solid var(--border); border-radius:8px; overflow:hidden; }
@@ -207,8 +206,6 @@
                     <div class="video-frame"><video id="videoEl" controls autoplay muted playsinline></video><iframe id="webrtcFrame" title="WebRTC live video" allow="autoplay; fullscreen; camera; microphone" allowfullscreen style="display:none"></iframe></div>
                     <div id="videoStatus" class="status-line">Idle - auto-starts on connect.</div>
                     <div class="video-controls compact-controls">
-                        <label>Server <input type="text" id="mediaHost" value="" oninput="refreshUrls()" placeholder="HLS/WebRTC host when provided"></label>
-                        <label>Stream <input type="text" id="streamName" value="" oninput="refreshUrls()" placeholder="playback stream path"></label>
                         <label>Quality
                             <select id="qualitySelect">
                                 <option value="0">Adaptive</option>
@@ -816,7 +813,8 @@
         });
     }
     function streamPath() {
-        const stream = (document.getElementById('streamName').value || '').trim().replace(/^\/+|\/+$/g, '');
+        const el = document.getElementById('streamName');
+        const stream = (el && el.value ? el.value : '').trim().replace(/^\/+|\/+$/g, '');
         return stream ? '/' + stream : '';
     }
     function normalizeMediaInput(raw) {
@@ -827,13 +825,16 @@
     function isAbsoluteUrl(value) {
         return /^https?:\/\/|^wss?:\/\//i.test(value);
     }
+    function mediaHostValue() {
+        const el = document.getElementById('mediaHost');
+        return normalizeMediaInput(el ? el.value : CFG.mediaHost);
+    }
     function baseMediaUrl() {
-        const value = normalizeMediaInput(document.getElementById('mediaHost').value);
+        const value = mediaHostValue();
         if (!value) return '';
         if (isAbsoluteUrl(value)) return value;
         return 'http://' + value;
-    }
-    function joinUrlPath(basePath, suffix) {
+    }    function joinUrlPath(basePath, suffix) {
         const base = (basePath || '').replace(/\/+$/, '');
         const tail = (suffix || '').replace(/^\/+/, '');
         if (!base) return '/' + tail;
@@ -842,7 +843,7 @@
     function rtmpUrl() {
         const configuredPush = normalizeMediaInput(CFG.mediaPushUrl);
         if (configuredPush) return configuredPush;
-        const value = normalizeMediaInput(document.getElementById('mediaHost').value);
+        const value = mediaHostValue();
         if (!value) return '';
         const stream = streamPath();
         if (isAbsoluteUrl(value)) {
@@ -1351,7 +1352,6 @@
 
     // ---- Boot ----
     if (CFG.brokerWsUrl) document.getElementById('brokerUrl').value = CFG.brokerWsUrl;
-    if (CFG.mediaHost) document.getElementById('mediaHost').value = CFG.mediaHost;
     loadFleetProfiles();
     renderFleetProfiles();
     restoreState();
