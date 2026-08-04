@@ -8,7 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="config.js?v=20260722-media-push"></script>
+    <script src="config.js?v=20260804-explicit-media"></script>
     <style>
         :root {
             --bg: #14161a;
@@ -207,8 +207,8 @@
                     <div class="video-frame"><video id="videoEl" controls autoplay muted playsinline></video><iframe id="webrtcFrame" title="WebRTC live video" allow="autoplay; fullscreen; camera; microphone" allowfullscreen style="display:none"></iframe></div>
                     <div id="videoStatus" class="status-line">Idle - auto-starts on connect.</div>
                     <div class="video-controls compact-controls">
-                        <label>Server <input type="text" id="mediaHost" value="https://camera.djidock.idea8.cloud/dock-camera" oninput="refreshUrls()" placeholder="host or full URL"></label>
-                        <label>Stream <input type="text" id="streamName" value="dock-camera" oninput="refreshUrls()"></label>
+                        <label>Server <input type="text" id="mediaHost" value="" oninput="refreshUrls()" placeholder="HLS/WebRTC host when provided"></label>
+                        <label>Stream <input type="text" id="streamName" value="" oninput="refreshUrls()" placeholder="playback stream path"></label>
                         <label>Quality
                             <select id="qualitySelect">
                                 <option value="0">Adaptive</option>
@@ -816,7 +816,7 @@
         });
     }
     function streamPath() {
-        const stream = (document.getElementById('streamName').value || 'dock-camera').trim().replace(/^\/+|\/+$/g, '');
+        const stream = (document.getElementById('streamName').value || '').trim().replace(/^\/+|\/+$/g, '');
         return stream ? '/' + stream : '';
     }
     function normalizeMediaInput(raw) {
@@ -854,38 +854,19 @@
         return 'rtmp://' + value + ':1935' + stream;
     }
     function hlsUrl() {
-        const configuredHls = normalizeMediaInput(CFG.mediaHlsUrl);
-        if (configuredHls) return configuredHls;
-        const value = normalizeMediaInput(document.getElementById('mediaHost').value);
-        if (!value) return '';
-        const stream = streamPath();
-        if (isAbsoluteUrl(value)) {
-            try {
-                const u = new URL(value);
-                return u.origin + joinUrlPath(u.pathname, stream) + '/index.m3u8';
-            } catch (e) {}
-        }
-        return 'http://' + value + ':8888' + stream + '/index.m3u8';
+        return normalizeMediaInput(CFG.mediaHlsUrl);
     }
     function whepUrl() {
-        const configuredWhep = normalizeMediaInput(CFG.mediaWhepUrl);
-        if (configuredWhep) return configuredWhep;
-        if (CFG.mediaWhepUrl === '') return '';
-        const value = normalizeMediaInput(document.getElementById('mediaHost').value);
-        if (!value) return '';
-        const stream = streamPath();
-        if (isAbsoluteUrl(value)) {
-            try {
-                const u = new URL(value);
-                return u.origin + joinUrlPath(u.pathname, stream) + '/whep';
-            } catch (e) {}
-        }
-        return 'http://' + value + ':8889' + stream + '/whep';
+        return normalizeMediaInput(CFG.mediaWhepUrl);
     }
     function refreshUrls() {
-        const rtmpEl = document.getElementById('rtmpUrlText'); if (rtmpEl) rtmpEl.innerText = rtmpUrl();
-        const hlsEl = document.getElementById('hlsUrlText'); if (hlsEl) hlsEl.innerText = hlsUrl();
-        const w = document.getElementById('whepUrlText'); if (w) w.innerText = whepUrl();
+        const rtmpEl = document.getElementById('rtmpUrlText');
+        if (rtmpEl) rtmpEl.innerText = rtmpUrl() || 'not configured';
+        const webRtcUrl = webRtcPageUrl() || whepUrl();
+        const w = document.getElementById('whepUrlText');
+        if (w) w.innerText = webRtcUrl || 'not configured';
+        const hlsEl = document.getElementById('hlsUrlText');
+        if (hlsEl) hlsEl.innerText = hlsUrl() || 'not configured';
     }
     function publishService(method, data, targetSn) {
         if (!client || !client.connected) { alert('Connect to the broker first.'); return; }
@@ -899,12 +880,7 @@
     }
     function currentVideoId() {
         const sel = document.getElementById('videoIdSelect').value;
-        if (sel) return sel;
-        // No dropdown pick yet: build from the camera the OSD actually reports (e.g. 99-0-0),
-        // NOT a guessed 0-0-0; the dock silently ignores a video_id for a camera it does not have.
-        const selectedDrone = activeDroneSn();
-            found[sn + '/' + pidx + '/normal-0'] = 'normal - ' + pidx;
-        return '';
+        return sel || '';
     }
     function startLive() {
         const videoId = currentVideoId();
@@ -952,8 +928,9 @@
     }
 
     // Low-latency playback via MediaMTX WebRTC (WHEP). Around 0.3-0.8s vs HLS taking several seconds.
-    function webRtcPageUrl() { return normalizeMediaInput(CFG.mediaWebRtcPageUrl); }
-
+    function webRtcPageUrl() {
+        return normalizeMediaInput(CFG.mediaWebRtcPageUrl);
+    }
     function playWebRTCPage() {
         const video = document.getElementById('videoEl');
         const frame = document.getElementById('webrtcFrame');
@@ -963,7 +940,7 @@
         if (video) video.style.display = 'none';
         frame.style.display = 'block';
         frame.src = url;
-                status.innerText = 'LIVE video (WebRTC - low latency)';
+        status.innerText = 'LIVE video (WebRTC page)';
     }
 
     async function playWebRTC() {
