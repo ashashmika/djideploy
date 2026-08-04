@@ -8,7 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="config.js?v=20260804-video-controls"></script>
+    <script src="config.js?v=20260804-airbridge-topics"></script>
     <style>
         :root {
             --bg: #14161a;
@@ -179,7 +179,7 @@
         <button class="nav-tab" data-tab="diagnostics" onclick="showTab('diagnostics')">MQTT & Diagnostics</button>
         <div class="sidebar-foot">
             <label class="check"><input type="checkbox" id="ackMode" checked> Cloud ack</label>
-            <input type="text" id="brokerUrl" value="wss://mqtt.djidock.idea8.cloud:443/mqtt" hidden>
+            <input type="text" id="brokerUrl" value="" hidden>
         </div>
     </aside>
 
@@ -507,9 +507,40 @@
         setText(id, value);
     }
 
+    function isAirBridgePayload(payload) {
+        return !!(payload && typeof payload === 'object' && payload.telemetry && payload.telemetry.extras);
+    }
+
+    function airBridgeDeviceType(topic, payload) {
+        const fromPayload = payload && payload.telemetry && payload.telemetry.extras && payload.telemetry.extras.device;
+        if (fromPayload) return String(fromPayload);
+        const root = String(topic || '').split('/')[0].toLowerCase();
+        if (root === 'dock') return 'Dock';
+        if (root === 'drone') return 'Drone';
+        if (root === 'remotecontroller' || root === 'remote-controller' || root === 'remote_controller') return 'Remote Controller';
+        return '';
+    }
+
+    function airBridgeSn(topic, payload) {
+        const extras = payload && payload.telemetry && payload.telemetry.extras || {};
+        return extras.device_sn || payload.tracker_id || String(topic || '').split('/')[2] || '';
+    }
+
+    function captureAirBridgeSNs(topic, payload) {
+        if (!isAirBridgePayload(payload)) return;
+        const type = airBridgeDeviceType(topic, payload).toLowerCase();
+        const sn = airBridgeSn(topic, payload);
+        const gw = payload.telemetry.extras.gateway_sn;
+        if (type === 'drone' && sn) { droneSn = droneSn || sn; setText('val-drone-sn', droneSn); }
+        if (type === 'dock' && sn) { dockSn = dockSn || sn; setText('val-dock-sn', dockSn); }
+        if ((type === 'remote controller' || type === 'remotecontroller') && sn) { rcSn = rcSn || sn; setText('val-rc-sn', rcSn); }
+        if (!rcSn && gw) { rcSn = gw; setText('val-rc-sn', gw); }
+        if (!dockSn && type === 'drone' && gw) { dockSn = gw; setText('val-dock-sn', gw); }
+    }
     // Learn the RC + drone serials from ANY topic (not only the topology message), so the raw
     // log and diagnostics can mask them as [RC]/[DRONE] even if we connected mid-session.
     function captureSNs(topic, payload) {
+        captureAirBridgeSNs(topic, payload);
         const parts = topic.split('/');
         if (parts.length < 3 || !parts[2]) return;
         const sn = parts[2];
@@ -557,6 +588,7 @@
     }
 
     function applyTelemetry(topic, payload) {
+        if (isAirBridgePayload(payload)) { applyAirBridgeTelemetry(topic, payload); return; }
         const parts = topic.split('/');
         const currentSn = parts.length >= 3 ? parts[2] : null;
 
@@ -631,6 +663,63 @@
         }
     }
 
+    function applyAirBridgeTelemetry(topic, payload) {
+        const t = payload.telemetry || {};
+        const extras = t.extras || {};
+        const pos = t.position || {};
+        const deviceType = airBridgeDeviceType(topic, payload);
+        const typeKey = deviceType.toLowerCase();
+        const sn = airBridgeSn(topic, payload);
+        const gatewaySn = extras.gateway_sn || '';
+        const isDrone = typeKey === 'drone';
+        const isDock = typeKey === 'dock';
+        const isRemote = typeKey === 'remote controller' || typeKey === 'remotecontroller';
+        const rank = isDrone ? 4 : 2;
+
+        if (isDrone && sn) { droneSn = droneSn || sn; setText('val-drone-sn', droneSn); }
+        if (isDock && sn) { dockSn = dockSn || sn; setText('val-dock-sn', dockSn); }
+        if (isRemote && sn) { rcSn = rcSn || sn; setText('val-rc-sn', rcSn); }
+        if (!rcSn && gatewaySn) { rcSn = gatewaySn; setText('val-rc-sn', gatewaySn); }
+        if (!dockSn && isDrone && gatewaySn) { dockSn = gatewaySn; setText('val-dock-sn', gatewaySn); }
+
+        const lat = num(pos.lat);
+        const lon = num(pos.lng !== undefined ? pos.lng : pos.lon);
+        const altAbs = num(pos.alt);
+        const alt = num(t.height && t.height.distance !== undefined ? t.height.distance : undefined);
+        const speed = num(t.speed);
+        const vspeed = num(t.vertical_speed);
+        const heading = num(t.track);
+        const bat = num(extras.batt);
+        const gps = num(extras.gps_count);
+        const pitch = num(extras.pitch);
+        const payloads = Array.isArray(extras.payloads) ? extras.payloads : [];
+        const firstPayload = payloads[0] || null;
+
+        let gotData = false;
+        if (isDrone && lat !== undefined) { setRanked('val-lat', lat.toFixed(6), rank, topic); state.lat = lat; gotData = true; }
+        if (isDrone && lon !== undefined) { setRanked('val-lon', lon.toFixed(6), rank, topic); state.lon = lon; gotData = true; }
+        if (isDrone && alt !== undefined) { state.alt = alt; gotData = true; }
+        if (isDrone && altAbs !== undefined) { state.altAbs = altAbs; gotData = true; }
+        if (isDrone && speed !== undefined) { state.hspeed = speed; gotData = true; }
+        if (isDrone && vspeed !== undefined) { state.vspeed = vspeed; gotData = true; }
+        if (isDrone && heading !== undefined) { state.heading = heading; gotData = true; }
+        if (bat !== undefined) {
+            if (isDock) state.dockBattery = bat;
+            else if (isRemote) state.rcBattery = bat;
+            else if (isDrone) state.battery = bat;
+            gotData = true;
+        }
+        if (gps !== undefined) { setRanked('val-gps', gps + ' sats', rank, topic); gotData = true; }
+        if (t.operational_status) { setRanked('val-mode', t.operational_status, rank, topic); }
+        if (pitch !== undefined) setText('g-pitch', pitch.toFixed(0));
+        if (firstPayload && firstPayload.payload_index) { gimbalPayloadIndex = firstPayload.payload_index; setText('g-pidx', firstPayload.payload_index); }
+
+        if (gotData) {
+            lastOsdTime = Date.now();
+            updateCards();
+            if (isDrone) updateMap();
+        }
+    }
     // ---- Stat cards ----
     function batteryColor(p) {
         if (p == null) return 'var(--muted)';
@@ -1249,12 +1338,18 @@
     function connectMQTT() {
         manualDisconnect = false;
         const url = document.getElementById('brokerUrl').value;
+        if (!url) {
+            setStatus('No browser MQTT URL', 'status-error');
+            logMessage('System Error', 'brokerWsUrl is blank. Browser dashboard needs ws:// or wss:// MQTT URL; mqtt://:1883 is only for native clients.');
+            return;
+        }
         setStatus('Connecting...', 'status-connecting');
-        const opts = { clientId: (CFG.clientPrefix || 'm3m') + '_dashboard_' + Math.random().toString(16).substr(2, 8) };
-        // The cloud broker requires auth (it is NOT anonymous). Fall back to the backend
-        // login if config.js doesn't override. For a local anonymous broker these are ignored.
-        opts.username = CFG.mqttUser || 'backend';
-        opts.password = CFG.mqttPass || 'YebiwOH9';
+        const baseClientId = CFG.mqttClientId || CFG.clientPrefix || 'm3m';
+        const opts = { clientId: baseClientId + '_dashboard_' + Math.random().toString(16).substr(2, 8) };
+        if (CFG.requireMqttAuth !== false) {
+            opts.username = CFG.mqttUser || 'backend';
+            opts.password = CFG.mqttPass || 'YebiwOH9';
+        }
         client = mqtt.connect(url, opts);
 
         client.on('connect', () => {
@@ -1262,8 +1357,9 @@
             messageLog.innerHTML = '';
             sessionStart = new Date();   // begin a new recording session
             rawLog = [];
-            logMessage('System', 'Connected to broker. Subscribing to all topics (#)...');
-            client.subscribe('#', (err) => { if (err) logMessage('System Error', 'Failed to subscribe'); });
+            const topics = Array.isArray(CFG.mqttTopics) && CFG.mqttTopics.length ? CFG.mqttTopics : ['#'];
+            logMessage('System', 'Connected to broker. Subscribing to: ' + topics.join(', '));
+            client.subscribe(topics, (err) => { if (err) logMessage('System Error', 'Failed to subscribe'); });
             if (freshTimer) clearInterval(freshTimer);
             freshTimer = setInterval(updateFreshness, 1000);
             const auto = document.getElementById('autoStream');
@@ -1351,7 +1447,7 @@
     }
 
     // ---- Boot ----
-    if (CFG.brokerWsUrl) document.getElementById('brokerUrl').value = CFG.brokerWsUrl;
+    document.getElementById('brokerUrl').value = CFG.brokerWsUrl || '';
     loadFleetProfiles();
     renderFleetProfiles();
     restoreState();
