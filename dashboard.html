@@ -8,7 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="config.js?v=20260804-airbridge-topics"></script>
+    <script src="config.js?v=20260807-webrtc-page-slash"></script>
     <style>
         :root {
             --bg: #14161a;
@@ -911,6 +911,11 @@
         if (!value) return '';
         return value.replace(/\/+$/, '');
     }
+    function normalizeMediaPageUrl(raw) {
+        const value = (raw || '').trim();
+        if (!value) return '';
+        return value.endsWith('/') ? value : value + '/';
+    }
     function isAbsoluteUrl(value) {
         return /^https?:\/\/|^wss?:\/\//i.test(value);
     }
@@ -1019,7 +1024,7 @@
 
     // Low-latency playback via MediaMTX WebRTC (WHEP). Around 0.3-0.8s vs HLS taking several seconds.
     function webRtcPageUrl() {
-        return normalizeMediaInput(CFG.mediaWebRtcPageUrl);
+        return normalizeMediaPageUrl(CFG.mediaWebRtcPageUrl);
     }
     function playWebRTCPage() {
         const video = document.getElementById('videoEl');
