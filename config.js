@@ -56,27 +56,27 @@ window.APP_CONFIG = {
   // endpoint the RC/drone can reach; do not derive it from the playback URL.
   // Old MediaMTX ingest:
 
-  mediaPushUrl:"rtmp://camera.djidock.idea8.cloud:1935/dock-camera",
+  //mediaPushUrl:"rtmp://camera.djidock.idea8.cloud:1935/dock-camera",
 
-  //mediaPushUrl:"rtmp://lss.heronairbridgedev.com:1935/405862880188/CamA",
+  mediaPushUrl:"rtmp://lss.heronairbridgedev.com:1935/405862880188/CamA",
 
   // ---- Live video: browser playback ---------------------------------------
   // Browser playback endpoint. This may be an HTTPS reverse-proxy path.
   // IMPORTANT: RTMP cannot be opened directly by a browser. Leave this blank
   // until the client provides a real HLS/WebRTC/WHEP playback endpoint.
   // Old MediaMTX host:
-  mediaHost:   "https://camera.djidock.idea8.cloud/dock-camera",
+  //mediaHost:   "https://camera.djidock.idea8.cloud/dock-camera",
 
-  //mediaHost:   "https://lss.heronairbridgedev.com/405862880188/CamA",
+  mediaHost:   "https://lss.heronairbridgedev.com/405862880188/CamA",
 
   // Exact browser playback URLs from the stream server. Set these to
   // the stream server output URL if it is not a MediaMTX-style path.
   // Old MediaMTX playback:
   
-  mediaHlsUrl: "https://camera.djidock.idea8.cloud/dock-camera/index.m3u8",
-  mediaWebRtcPageUrl:"https://camera.djidock.idea8.cloud/dock-camera/",
+  //mediaHlsUrl: "https://camera.djidock.idea8.cloud/dock-camera/index.m3u8",
+  //mediaWebRtcPageUrl:"https://camera.djidock.idea8.cloud/dock-camera/",
 
-  //mediaHlsUrl: "https://lss.heronairbridgedev.com/405862880188/CamA/index.m3u8",
+  mediaHlsUrl: "https://lss.heronairbridgedev.com/405862880188/CamA/index.m3u8",
   //mediaWhepUrl:"",
-  //mediaWebRtcPageUrl:"https://lss.heronairbridgedev.com/405862880188/CamA/"
+  mediaWebRtcPageUrl:"https://lss.heronairbridgedev.com/405862880188/CamA/"
 };
