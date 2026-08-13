@@ -8,7 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="config.js?v=20260807-webrtc-page-slash"></script>
+    <script src="config.js?v=20260813-remote-osd-battery"></script>
     <style>
         :root {
             --bg: #14161a;
@@ -591,6 +591,8 @@
         if (isAirBridgePayload(payload)) { applyAirBridgeTelemetry(topic, payload); return; }
         const parts = topic.split('/');
         const currentSn = parts.length >= 3 ? parts[2] : null;
+        const data = payload && payload.data && typeof payload.data === 'object' ? payload.data : payload;
+        const isRemoteOsd = Boolean(data && data.wireless_link && typeof data.wireless_link === 'object');
 
         let rank = 1;
         if (topic.includes('/osd')) rank = 2;
@@ -616,7 +618,10 @@
         if (altAbs !== undefined) { state.altAbs = altAbs; gotData = true; }
         if (bat !== undefined) {
             const dsn = activeDockSn();
-            if (dsn && currentSn === dsn) state.dockBattery = bat;
+            if (isRemoteOsd) {
+                state.rcBattery = bat;
+                if (currentSn) { rcSn = rcSn || currentSn; setText('val-rc-sn', rcSn); }
+            } else if (dsn && currentSn === dsn) state.dockBattery = bat;
             else if (rcSn && currentSn === rcSn) state.rcBattery = bat;
             else state.battery = bat;
             gotData = true;
@@ -659,7 +664,7 @@
         if (gotData || gotGnss) {
             lastOsdTime = Date.now();
             updateCards();
-            updateMap();
+            if (!isRemoteOsd) updateMap();
         }
     }
 
