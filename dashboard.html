@@ -8,7 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="config.js?v=20260813-remote-osd-battery"></script>
+    <script src="config.js?v=20260816-camera-switch-controls"></script>
     <style>
         :root {
             --bg: #14161a;
@@ -215,7 +215,7 @@
                                 <option value="4">Ultra HD</option>
                             </select>
                         </label>
-                        <label>Camera <select id="videoIdSelect"><option value="">(waiting...)</option></select></label>
+                        <label>Camera <select id="videoIdSelect" onchange="switchCamera()"><option value="">(waiting...)</option></select></label>
                         <label>Player
                             <select id="playerMode" onchange="playVideo()">
                                 <option value="auto">Auto</option>
@@ -226,6 +226,7 @@
                         <button class="btn-connect btn-small" onclick="startLive()">Start</button>
                         <button class="btn-disconnect btn-small" onclick="stopLive()">Stop</button>
                         <button class="btn-small btn-play" onclick="playVideo()">Play</button>
+                        <button class="btn-small btn-ghost" id="pauseVideoBtn" onclick="togglePauseVideo()">Pause</button>
                     </div>
                     <label class="check"><input type="checkbox" id="autoStream" checked> Auto-start video on connect</label>
                     <div class="url-list">
@@ -896,6 +897,9 @@
     let pc = null;   // WebRTC (WHEP) peer connection for low-latency playback
     let liveVideoIds = {};
     let liveStartSent = false;
+    let activeLiveVideoId = '';
+    let playerPaused = false;
+    let pendingPlayTimer = null;
     let liveCapReported = false;   // true once a real live_capacity arrives (authoritative over OSD-derived)
     let liveCommandsSent = 0;
     let lastServiceResult = null;
@@ -969,31 +973,91 @@
         if (hlsEl) hlsEl.innerText = hlsUrl() || 'not configured';
     }
     function publishService(method, data, targetSn) {
-        if (!client || !client.connected) { alert('Connect to the broker first.'); return; }
+        if (!client || !client.connected) { alert('Connect to the broker first.'); return false; }
         const sn = targetSn || activeGatewaySn();
-        if (!sn) { alert('No SN yet - wait for the drone to connect.'); return; }
+        if (!sn) { alert('No SN yet - wait for the drone to connect.'); return false; }
         const msg = { tid: uuid(), bid: uuid(), timestamp: Date.now(), method: method, data: data };
         const topic = 'thing/product/' + sn + '/services';
         client.publish(topic, JSON.stringify(msg), { qos: 1 });
         liveCommandsSent++;
         logMessage('SERVICE -> ' + topic, msg);
+        return true;
     }
     function currentVideoId() {
         const sel = document.getElementById('videoIdSelect').value;
         return sel || '';
     }
+    function selectedQuality() {
+        const el = document.getElementById('qualitySelect');
+        return parseInt(el && el.value ? el.value : '3', 10);
+    }
+    function schedulePlayerStart(delayMs) {
+        if (pendingPlayTimer) clearTimeout(pendingPlayTimer);
+        pendingPlayTimer = setTimeout(function () {
+            pendingPlayTimer = null;
+            if (!playerPaused && activeLiveVideoId) playVideo();
+        }, delayMs || 2500);
+    }
+    function updatePauseButton() {
+        const btn = document.getElementById('pauseVideoBtn');
+        if (btn) btn.innerText = playerPaused ? 'Resume' : 'Pause';
+    }
     function startLive() {
         const videoId = currentVideoId();
         if (!videoId) { alert('No camera available yet (waiting for live_capacity).'); return; }
-        publishService('live_start_push', {
+        if (!rtmpUrl()) { alert('RTMP push URL is not configured.'); return; }
+        if (activeLiveVideoId && activeLiveVideoId !== videoId) {
+            publishService('live_stop_push', { video_id: activeLiveVideoId });
+            stopPlayers();
+        }
+        const ok = publishService('live_start_push', {
             url_type: 1, url: rtmpUrl(), video_id: videoId,
-            video_quality: parseInt(document.getElementById('qualitySelect').value, 10)
+            video_quality: selectedQuality()
         });
-        document.getElementById('videoStatus').innerText = 'Sent live_start_push. Give it a few seconds, then Play.';
+        if (!ok) return;
+        activeLiveVideoId = videoId;
+        liveStartSent = true;
+        playerPaused = false;
+        updatePauseButton();
+        document.getElementById('videoStatus').innerText = 'Starting ' + (liveVideoIds[videoId] || videoId) + '...';
+        schedulePlayerStart(2800);
     }
     function stopLive() {
-        publishService('live_stop_push', { video_id: currentVideoId() });
-        document.getElementById('videoStatus').innerText = 'Sent live_stop_push.';
+        const videoId = activeLiveVideoId || currentVideoId();
+        if (videoId) publishService('live_stop_push', { video_id: videoId });
+        activeLiveVideoId = '';
+        liveStartSent = false;
+        playerPaused = false;
+        if (pendingPlayTimer) { clearTimeout(pendingPlayTimer); pendingPlayTimer = null; }
+        stopPlayers();
+        updatePauseButton();
+        document.getElementById('videoStatus').innerText = videoId ? 'Stopped live stream.' : 'No active live stream.';
+    }
+    function switchCamera() {
+        const nextVideoId = currentVideoId();
+        if (!nextVideoId) return;
+        if (!client || !client.connected) {
+            document.getElementById('videoStatus').innerText = 'Camera selected. Connect MQTT, then Start.';
+            return;
+        }
+        if (activeLiveVideoId && activeLiveVideoId === nextVideoId) {
+            document.getElementById('videoStatus').innerText = 'Already using ' + (liveVideoIds[nextVideoId] || nextVideoId) + '.';
+            return;
+        }
+        if (!activeLiveVideoId && !liveStartSent) {
+            document.getElementById('videoStatus').innerText = 'Selected ' + (liveVideoIds[nextVideoId] || nextVideoId) + '. Press Start to stream.';
+            return;
+        }
+        if (activeLiveVideoId) {
+            publishService('live_stop_push', { video_id: activeLiveVideoId });
+            stopPlayers();
+        }
+        activeLiveVideoId = '';
+        liveStartSent = false;
+        playerPaused = false;
+        updatePauseButton();
+        document.getElementById('videoStatus').innerText = 'Switching to ' + (liveVideoIds[nextVideoId] || nextVideoId) + '...';
+        setTimeout(startLive, 900);
     }
     function playerMode() { const el = document.getElementById('playerMode'); return el ? el.value : 'auto'; }
 
@@ -1009,9 +1073,24 @@
 
     // Entry point (Play button, auto-start, player-mode change). WebRTC first, HLS as fallback.
     function playVideo() {
+        playerPaused = false;
+        updatePauseButton();
         stopPlayers();
         if (playerMode() === 'hls') { playHls(); return; }
         playWebRTC();
+    }
+    function togglePauseVideo() {
+        if (playerPaused) {
+            playVideo();
+            return;
+        }
+        playerPaused = true;
+        if (pendingPlayTimer) { clearTimeout(pendingPlayTimer); pendingPlayTimer = null; }
+        stopPlayers();
+        updatePauseButton();
+        document.getElementById('videoStatus').innerText = activeLiveVideoId
+            ? 'Playback paused. Live push is still running.'
+            : 'Playback paused.';
     }
 
     // Non-trickle ICE: wait until the browser has gathered its (LAN host) candidates so we can
@@ -1413,7 +1492,9 @@
     function resetTelemetry() {
         Object.keys(state).forEach(function (k) { state[k] = null; });
         rcSn = null; droneSn = null; dockSn = null; lastOsdTime = 0;
-        authGranted = false; liveStartSent = false; liveCapReported = false; liveVideoIds = {};
+        authGranted = false; liveStartSent = false; activeLiveVideoId = ''; playerPaused = false; liveCapReported = false; liveVideoIds = {};
+        if (pendingPlayTimer) { clearTimeout(pendingPlayTimer); pendingPlayTimer = null; }
+        updatePauseButton();
         Object.keys(fieldRank).forEach(function (k) { delete fieldRank[k]; });
         Object.keys(fieldSource).forEach(function (k) { delete fieldSource[k]; });
 
