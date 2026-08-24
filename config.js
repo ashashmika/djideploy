@@ -70,7 +70,7 @@ window.APP_CONFIG = {
 
   //mediaHost:   "https://camera.djidock.idea8.cloud/dock-camera",
 
-  mediaHost:   "https://lss.heronairbridgedev.com/183594714300/CamA",
+  mediaHost:   "https://heronairbridgedev.com:1935/574408143495/CamA",
 
   // Exact browser playback URLs from the stream server. Set these to
   // the stream server output URL if it is not a MediaMTX-style path.
@@ -82,7 +82,7 @@ window.APP_CONFIG = {
   //mediaHlsUrl: "https://camera.djidock.idea8.cloud/dock-camera/index.m3u8",
   //mediaWebRtcPageUrl:"https://camera.djidock.idea8.cloud/dock-camera/",
 
-  mediaHlsUrl: "https://lss.heronairbridgedev.com/183594714300/CamA/index.m3u8",
+  mediaHlsUrl: "https://lss.heronairbridgedev.com/574408143495/CamA/index.m3u8",
   //mediaWhepUrl:"",
-  mediaWebRtcPageUrl:"https://lss.heronairbridgedev.com/183594714300/CamA/"
+  mediaWebRtcPageUrl:"https://lss.heronairbridgedev.com/574408143495/CamA/"
 };
