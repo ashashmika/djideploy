@@ -59,7 +59,7 @@ window.APP_CONFIG = {
 
   //mediaPushUrl:"rtmp://camera.djidock.idea8.cloud:1935/dock-camera",
 
-  mediaPushUrl:"rtmp://lss.heronairbridgedev.com:1935/183594714300/CamA",
+  mediaPushUrl:"rtmp://lss.heronairbridgedev.com:1935/574408143495/CamA",
 
   // ---- Live video: browser playback ---------------------------------------
   // Browser playback endpoint. This may be an HTTPS reverse-proxy path.
